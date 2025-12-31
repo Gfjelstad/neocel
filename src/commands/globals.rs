@@ -19,6 +19,13 @@ pub fn split_scratch_down(engine: &mut Engine) -> Result<(), String> {
     Ok(())
 }
 
+pub fn close_window(engine: &mut Engine) -> Result<(), String> {
+    let doc_id = engine.windows[&engine.active_window.clone()].doc_id.clone();
+    engine.close_doc(&doc_id)?;
+    engine.close_window(&engine.active_window.clone())?;
+    Ok(())
+}
+
 pub fn hello_world_popup(engine: &mut Engine) -> Result<(), String> {
     let data = crate::engine::document::DocumentData::Text(vec![
         String::new(),

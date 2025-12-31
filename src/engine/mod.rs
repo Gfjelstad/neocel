@@ -9,7 +9,10 @@ pub mod document;
 pub mod layout;
 pub mod parse;
 pub mod popup;
-use crossterm::event::{self, Event, KeyEvent, KeyEventState};
+use crossterm::{
+    event::{self, Event, KeyEvent, KeyEventState},
+    terminal,
+};
 use uuid::Uuid;
 
 use crate::{
@@ -98,38 +101,69 @@ impl Engine {
         let doc = self.docs.get_mut(&win.doc_id.clone()).unwrap();
         (win, doc)
     }
-    pub fn await_input(&mut self) -> Result<KeyEvent, String> {
+    pub fn await_input(&mut self) -> Result<Event, String> {
         loop {
             let event = crossterm::event::read().map_err(|err| err.to_string())?;
             self.emit(&EngineEvent::InputEvent(event.clone()));
-            if let Event::Key(event) = event {
+            if (event.is_mouse() && event.as_mouse_event().unwrap().kind.is_up())
+                || event.is_key_press()
+            {
                 return Ok(event);
             }
         }
     }
     pub fn process_input(&mut self) -> Result<Option<KeyEvent>, String> {
-        let key_event = self.await_input()?;
+        let event = self.await_input()?;
+        match event {
+            Event::Mouse(event) => {
+                let (col, row) = (event.column as usize, event.row as usize);
+                let (cols, rows) = terminal::size().map_err(|e| e.to_string())?;
+                let tiles = self.layout.get_rects(&Rect {
+                    x: 0,
+                    y: 0,
+                    width: cols as usize,
+                    height: rows as usize,
+                });
+                for (win, rect) in tiles {
+                    if rect.x <= col
+                        && rect.x + rect.width > col
+                        && rect.y <= row
+                        && rect.y + rect.height > row
+                    {
+                        self.active_window = win;
+                        self.emit(&EngineEvent::LayoutChange);
+                    }
+                }
+                Ok(None)
+            }
+            Event::Key(key_event) => {
+                let normalized = KeyEvent {
+                    code: key_event.code,
+                    modifiers: key_event.modifiers,
+                    state: KeyEventState::empty(),
+                    kind: event::KeyEventKind::Press,
+                };
+                if key_event.kind != event::KeyEventKind::Press {
+                    return Ok(Some(key_event));
+                }
+
+                let command_name = self.config.keybinds.get(&normalized).cloned();
+
+                let command_fn =
+                    command_name.and_then(|name| self.config.commands.get(&name).cloned());
+
+                if let Some(fun) = command_fn {
+                    fun(self)?;
+                    return Ok(None);
+                }
+                Ok(Some(key_event))
+            }
+            _ => {
+                return Ok(None);
+            }
+        }
 
         // Normalize
-        let normalized = KeyEvent {
-            code: key_event.code,
-            modifiers: key_event.modifiers,
-            state: KeyEventState::empty(),
-            kind: event::KeyEventKind::Press,
-        };
-        if key_event.kind != event::KeyEventKind::Press {
-            return Ok(Some(key_event));
-        }
-
-        let command_name = self.config.keybinds.get(&normalized).cloned();
-
-        let command_fn = command_name.and_then(|name| self.config.commands.get(&name).cloned());
-
-        if let Some(fun) = command_fn {
-            fun(self)?;
-            return Ok(None);
-        }
-        Ok(Some(key_event))
     }
     pub fn create_popup(
         &mut self,
@@ -157,6 +191,7 @@ impl Engine {
     }
     pub fn close_window(&mut self, window_id: &String) -> Result<(), String> {
         self.windows.remove(window_id);
+        self.emit(&EngineEvent::WindowClose(window_id.clone()));
         Ok(())
     }
     pub fn close_doc(&mut self, doc_id: &String) -> Result<(), String> {

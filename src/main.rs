@@ -1,10 +1,15 @@
-use std::{collections::HashMap, env, io::stdout, panic};
+use std::{
+    collections::HashMap,
+    env,
+    io::{Write, stdout},
+    panic,
+};
 
 use crossterm::{
-    ExecutableCommand,
-    cursor::{Hide, Show},
+    ExecutableCommand, QueueableCommand,
+    cursor::{self, Hide, Show},
     event::{DisableMouseCapture, EnableMouseCapture},
-    terminal::{disable_raw_mode, enable_raw_mode},
+    terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
 };
 
 use crate::{
@@ -22,20 +27,30 @@ fn main() -> Result<(), String> {
     enable_raw_mode().unwrap();
     stdout().execute(Hide).unwrap();
     stdout().execute(EnableMouseCapture).unwrap();
-    
-    let _ = panic::catch_unwind(|| {
-        let _ = main_loop(_args);
-    });
 
+    // let res = panic::catch_unwind(|| {
+    let _ = main_loop(_args);
+    // });
 
     stdout().execute(DisableMouseCapture).unwrap();
     stdout().execute(Show).unwrap();
     disable_raw_mode().map_err(|e| e.to_string())?;
+
+    stdout()
+        .queue(Clear(ClearType::All))
+        .unwrap()
+        // 2. Move the cursor to the top-left position (column 0, row 0)
+        .queue(cursor::MoveTo(0, 0))
+        .unwrap()
+        // 3. Flush the commands to the terminal
+        .flush()
+        .unwrap();
+
     Ok(())
 }
 
-fn main_loop(_args: Vec<String> ) -> Result<(), String> {
-let config = setup_config();
+fn main_loop(_args: Vec<String>) -> Result<(), String> {
+    let config = setup_config();
     let mut ui = setup_ui(&config);
     let mut engine = setup_engine(config);
     ui.handle_events(&mut engine);
@@ -65,6 +80,7 @@ fn setup_config() -> config::Config {
             ("C-f".to_string(), "kill".to_string()),
             ("C-S-down".to_string(), "split-scratch-down".to_string()),
             ("C-h".to_string(), "hello-world".to_string()),
+            ("C-q".to_string(), "close-window".to_string()),
         ])),
         styles: HashMap::new(),
         commands: HashMap::new(),
@@ -80,7 +96,9 @@ fn setup_config() -> config::Config {
         .commands
         .insert("move_down".to_string(), globals::move_down);
     config.commands.insert("kill".to_string(), globals::kill);
-
+    config
+        .commands
+        .insert("close-window".to_string(), globals::close_window);
     config
         .commands
         .insert("hello-world".to_string(), globals::hello_world_popup);
