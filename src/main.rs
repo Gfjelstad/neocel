@@ -1,80 +1,91 @@
-use std::{collections::HashMap, env, fs::File};
+use std::{collections::HashMap, env, io::stdout};
 
-use crossterm::{event::KeyCode, terminal};
+use crossterm::{
+    ExecutableCommand,
+    cursor::{Hide, Show},
+    event::{DisableMouseCapture, EnableMouseCapture},
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
 
-use crate::{config::Config, engine::Engine, render::UI};
-
+use crate::{
+    commands::globals,
+    config::{Config, parse_keymap},
+    engine::Engine,
+    render::UI,
+};
+pub mod commands;
 pub mod config;
 pub mod engine;
 pub mod render;
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    //
+fn main() -> Result<(), String> {
+    let _args: Vec<String> = env::args().collect();
+    enable_raw_mode().unwrap();
+    stdout().execute(Hide).unwrap();
+    stdout().execute(EnableMouseCapture).unwrap();
 
-    // if (args.len() == 1) {
-    //     return;
-    // }
-
-    let mut config = setup_config();
+    let config = setup_config();
+    let mut ui = setup_ui(&config);
     let mut engine = setup_engine(config);
-    let mut ui = setup_ui();
+    ui.handle_events(&mut engine);
+    ui.draw(&mut engine);
     loop {
-        ui.handle_events(&mut engine);
-
-        println!("waiting for input");
-        match engine.await_input() {
-            Ok(event) => {
-                if event.code == KeyCode::Char('F') {
-                    panic!("success");
-                }
-                println!("{:?}\n", event.code.to_string())
-            }
-            Err(str) => {
-                panic!("failed");
-            }
+        let ran = engine.process_input()?;
+        if engine.should_quit {
+            break;
         }
+        if let Some(val) = ran {
+            let window_id = engine.active_window.clone(); // copy or clone first
+
+            let window = ui.windows.get_mut(&window_id).unwrap();
+            window.handle_key(val, &mut engine);
+        }
+
+        ui.handle_events(&mut engine);
+        ui.draw(&mut engine);
     }
-    println!("out of loop")
+
+    stdout().execute(DisableMouseCapture).unwrap();
+    stdout().execute(Show).unwrap();
+    disable_raw_mode().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn setup_config() -> config::Config {
     let mut config = config::Config {
         settings: HashMap::new(),
-        keybinds: HashMap::new(),
+        keybinds: parse_keymap(&HashMap::from([
+            ("C-f".to_string(), "kill".to_string()),
+            ("C-S-down".to_string(), "split-scratch-down".to_string()),
+            ("C-h".to_string(), "hello-world".to_string()),
+        ])),
         styles: HashMap::new(),
         commands: HashMap::new(),
     };
     config
         .styles
-        .insert("background".to_string(), "#FFFFFF".to_string());
+        .insert("background".to_string(), "#1D1D1D".to_string());
     config
         .styles
-        .insert("foreground".to_string(), "#000000".to_string());
+        .insert("foreground".to_string(), "#F54927".to_string());
 
+    config
+        .commands
+        .insert("move_down".to_string(), globals::move_down);
+    config.commands.insert("kill".to_string(), globals::kill);
+
+    config
+        .commands
+        .insert("hello-world".to_string(), globals::hello_world_popup);
     config.commands.insert(
-        "move_down".to_string(),
-        Box::new(|engine: &mut Engine| {
-            engine
-                .windows
-                .get_mut(&engine.active_window)
-                .unwrap()
-                .cursor_row += 1
-        }),
+        "split-scratch-down".to_string(),
+        globals::split_scratch_down,
     );
-    config.commands.insert(
-        "kill".to_string(),
-        Box::new(|_: &mut Engine| {
-            panic!();
-        }),
-    );
-    return config;
+
+    config
 }
 fn setup_engine(config: Config) -> Engine {
-    let (cols, rows) = terminal::size().expect("could not access terminal size");
-    return Engine::new(config);
+    Engine::new(config)
 }
-fn setup_ui() -> UI {
-    UI {
-        windows: HashMap::new(),
-    }
+fn setup_ui(config: &Config) -> UI {
+    UI::new(config)
 }

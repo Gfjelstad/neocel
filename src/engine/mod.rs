@@ -2,13 +2,23 @@ use std::{
     collections::{HashMap, HashSet},
     io,
     path::PathBuf,
+    str::FromStr,
     vec,
 };
+pub mod document;
 pub mod parse;
-use crossterm::event::{self, Event, KeyEvent};
+use crossterm::event::{self, Event, KeyEvent, KeyEventState};
 use uuid::Uuid;
 
-use crate::{config::Config, engine::parse::parse_csv_to_doc};
+use crate::{
+    config::{CommandFn, Config},
+    engine::{
+        document::{DocId, DocType, Document, DocumentData},
+        parse::parse_csv_to_doc,
+    },
+};
+
+pub type EngineEventCallback = Box<dyn FnMut(&mut Engine, &EngineEvent)>;
 
 pub struct Engine {
     pub events: Vec<EngineEvent>,
@@ -19,14 +29,19 @@ pub struct Engine {
     pub active_window: WindowId,
 
     pub layout: LayoutNode,
+    pub popups: Option<PopupWindow>,
     pub config: Config,
+
+    pub should_quit: bool,
+
+    subscriptions: HashMap<EngineEventKind, Vec<EngineEventCallback>>,
 }
 impl Engine {
     pub fn new(config: Config) -> Self {
         // let doc = parse_csv_to_doc(sheet).expect("Failed To Parse CSV");
         let doc_id = Uuid::new_v4().to_string();
         let window_id = Uuid::new_v4().to_string();
-        let engine = Self {
+        Self {
             events: vec![EngineEvent::WindowCreate(window_id.clone())],
             windows: HashMap::from([(
                 window_id.clone(),
@@ -38,41 +53,108 @@ impl Engine {
                     scroll_cols: 0,
                 },
             )]),
+            popups: None,
+            should_quit: false,
             active_window: window_id.clone(),
-            config: config,
+            config,
+            subscriptions: HashMap::new(),
             docs: HashMap::from([(
                 doc_id.clone(),
                 Document {
                     doc_type: DocType::Text,
                     path: None,
                     undo_stack: vec![],
-                    data: DocumentData::Text("".to_string()),
+                    data: DocumentData::Text(vec!["".to_string()]),
                 },
             )]),
             command_context: vec![],
             layout: LayoutNode::Leaf(window_id),
-        };
+        }
+    }
+    pub fn subscribe(&mut self, event: EngineEventKind, func: EngineEventCallback) {
+        self.subscriptions
+            .entry(event)
+            .or_insert_with(Vec::new)
+            .push(func);
+    }
+    pub fn emit(&mut self, event: &EngineEvent) {
+        let kind = event.kind();
+        let mut subs = self.subscriptions.remove(&kind).unwrap_or_default();
 
-        return engine;
+        for f in subs.iter_mut() {
+            f(self, event);
+        }
+        self.subscriptions.insert(kind, subs);
     }
 
+    pub fn get_current_window(&mut self) -> (&mut WindowState, &mut Document) {
+        let win_id = self.active_window.clone();
+        let win = self.windows.get_mut(&win_id).unwrap();
+        let doc = self.docs.get_mut(&win.doc_id.clone()).unwrap();
+        (win, doc)
+    }
     pub fn await_input(&mut self) -> Result<KeyEvent, String> {
         loop {
-            if let Event::Key(event) = crossterm::event::read().map_err(|err| err.to_string())? {
+            let event = crossterm::event::read().map_err(|err| err.to_string())?;
+            self.emit(&EngineEvent::InputEvent(event.clone()));
+            if let Event::Key(event) = event {
                 return Ok(event);
             }
         }
     }
+    pub fn process_input(&mut self) -> Result<Option<KeyEvent>, String> {
+        let key_event = self.await_input()?;
 
-    pub fn replace_window_document(
+        // Normalize
+        let normalized = KeyEvent {
+            code: key_event.code,
+            modifiers: key_event.modifiers,
+            state: KeyEventState::empty(),
+            kind: event::KeyEventKind::Press,
+        };
+        if key_event.kind != event::KeyEventKind::Press {
+            return Ok(Some(key_event));
+        }
+
+        let command_name = self.config.keybinds.get(&normalized).cloned();
+
+        let command_fn = command_name.and_then(|name| self.config.commands.get(&name).cloned());
+
+        if let Some(fun) = command_fn {
+            fun(self)?;
+            return Ok(None);
+        }
+        Ok(Some(key_event))
+    }
+    pub fn create_popup(
         &mut self,
-        doc: Document,
-        window_id: WindowId,
-        split: Option<bool>,
-    ) -> WindowId {
-        let doc_id = Uuid::new_v4().to_string();
+        doc: DocumentData,
+        width: usize,
+        height: usize,
+        pos: PopupPosition,
+    ) -> Result<(WindowId, DocId), String> {
+        if !(matches!(doc, DocumentData::Text(_)) || matches!(doc, DocumentData::Help(_))) {
+            return Err("Document Data must be either Text or Help".to_string());
+        }
+        let (doc_id, doc) = Document::new(doc, None);
+        let (win_id, win) = WindowState::new(doc_id.clone());
+        self.windows.insert(win_id.clone(), win);
         self.docs.insert(doc_id.clone(), doc);
+
+        self.popups = Some(PopupWindow {
+            position: pos,
+            width,
+            height,
+            layout: LayoutNode::Leaf(win_id.clone()),
+        });
+        self.events.push(EngineEvent::WindowCreate(win_id.clone()));
+        Ok((win_id, doc_id))
+    }
+
+    pub fn split_window_document(&mut self, doc: DocumentData, direction: SplitDirection) {
+        let (doc_id, doc) = Document::new(doc, None);
         let window_id = Uuid::new_v4().to_string();
+        self.docs.insert(doc_id.clone(), doc);
         self.windows.insert(
             window_id.clone(),
             WindowState {
@@ -83,16 +165,90 @@ impl Engine {
                 scroll_cols: 0,
             },
         );
-        self.events.push(EngineEvent::WindowDocChange(
-            window_id.clone(),
-            doc_id.clone(),
-        ));
-        if let Some(mut node) = self.layout.find_child(window_id.clone()) {
-            node = &mut LayoutNode::Leaf(window_id.clone());
+        if let Some(old_node) = self.layout.find_child(self.active_window.clone()) {
+            let cloned: LayoutNode = old_node.clone();
+            let new_node = LayoutNode::Leaf(window_id.clone());
+            let first: LayoutNode;
+            let second: LayoutNode;
+            let dir: SplitDir;
+            match direction {
+                SplitDirection::Up => {
+                    second = cloned;
+                    first = new_node;
+                    dir = SplitDir::Vert;
+                }
+                SplitDirection::Down => {
+                    first = new_node;
+                    second = cloned;
+                    dir = SplitDir::Vert;
+                }
+                SplitDirection::Left => {
+                    first = new_node;
+                    second = cloned;
+                    dir = SplitDir::Horz;
+                }
+                SplitDirection::Right => {
+                    first = cloned;
+                    second = new_node;
+                    dir = SplitDir::Horz;
+                }
+            }
+            *old_node = LayoutNode::Split {
+                direction: dir,
+                ratio: 0.5,
+                first: Box::new(first),
+                second: Box::new(second),
+            };
+            self.events
+                .push(EngineEvent::WindowCreate(window_id.clone()));
         }
-
-        return window_id;
     }
+
+    // pub fn replace_window_document(&mut self, doc: Document, window_id: WindowId) -> WindowId {
+    //     let doc_id = Uuid::new_v4().to_string();
+    //     self.docs.insert(doc_id.clone(), doc);
+    //     let window_id = Uuid::new_v4().to_string();
+    //     self.windows.insert(
+    //         window_id.clone(),
+    //         WindowState {
+    //             doc_id: doc_id.clone(),
+    //             cursor_row: 0,
+    //             cursor_col: 0,
+    //             scroll_rows: 0,
+    //             scroll_cols: 0,
+    //         },
+    //     );
+    //     self.events.push(EngineEvent::WindowDocChange(
+    //         window_id.clone(),
+    //         doc_id.clone(),
+    //     ));
+    //     if let Some(mut _node) = self.layout.find_child(window_id.clone()) {
+    //         _node = &mut LayoutNode::Leaf(window_id.clone());
+    //     }
+    //
+    //     window_id
+    // }
+}
+#[derive(Clone)]
+pub enum PopupPosition {
+    TopRight,
+    TopLeft,
+    BottomRight,
+    BottonLeft,
+    Center,
+}
+#[derive(Clone)]
+pub struct PopupWindow {
+    pub layout: LayoutNode,
+    pub position: PopupPosition,
+    pub width: usize,
+    pub height: usize,
+}
+pub enum SplitDirection {
+    Up,
+    Down,
+    Left,
+    Right,
 }
 pub enum EngineEvent {
     WindowCreate(WindowId),
@@ -100,24 +256,30 @@ pub enum EngineEvent {
     WindowDocChange(WindowId, DocId),
     LayoutChange,
     DocumentCreate(DocId),
+    InputEvent(Event),
 }
-pub type DocId = String;
-pub enum DocType {
-    SpreadSheet,
-    Info,
-    Text,
+
+impl EngineEvent {
+    pub fn kind(&self) -> EngineEventKind {
+        match self {
+            EngineEvent::WindowCreate(_) => EngineEventKind::WindowCreate,
+            EngineEvent::WindowClose(_) => EngineEventKind::WindowClose,
+            EngineEvent::WindowDocChange(_, _) => EngineEventKind::WindowDocChange,
+            EngineEvent::LayoutChange => EngineEventKind::LayoutChange,
+            EngineEvent::DocumentCreate(_) => EngineEventKind::DocumentCreate,
+            EngineEvent::InputEvent(_) => EngineEventKind::InputEvent,
+        }
+    }
 }
-pub struct Document {
-    pub doc_type: DocType,
-    pub path: Option<PathBuf>,
-    pub data: DocumentData,
-    pub undo_stack: Vec<Edit>,
-}
-pub enum DocumentData {
-    SpreadSheet(HashMap<usize, HashMap<usize, Cell>>),
-    Text(String),
-    Help(String),
-    Config(String),
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EngineEventKind {
+    WindowCreate,
+    WindowClose,
+    WindowDocChange,
+    LayoutChange,
+    DocumentCreate,
+    InputEvent,
 }
 pub struct Edit {}
 pub type WindowId = String;
@@ -128,10 +290,26 @@ pub struct WindowState {
     pub scroll_rows: usize,
     pub scroll_cols: usize,
 }
+impl WindowState {
+    pub fn new(doc_id: DocId) -> (WindowId, WindowState) {
+        (
+            Uuid::new_v4().to_string(),
+            Self {
+                doc_id,
+                cursor_row: 0,
+                cursor_col: 0,
+                scroll_rows: 0,
+                scroll_cols: 0,
+            },
+        )
+    }
+}
+#[derive(Clone)]
 pub enum SplitDir {
     Vert,
     Horz,
 }
+#[derive(Clone)]
 pub enum LayoutNode {
     Leaf(WindowId),
     Split {
@@ -145,8 +323,7 @@ impl LayoutNode {
     fn find_child(&mut self, window_id: String) -> Option<&mut LayoutNode> {
         let mut search = vec![self];
 
-        while search.len() > 0 {
-            let current = search.pop().expect("current LayoutNode does not exist");
+        while let Some(current) = search.pop() {
             match current {
                 LayoutNode::Leaf(curr_id) => {
                     if &window_id == curr_id {
@@ -167,36 +344,3 @@ impl LayoutNode {
         None
     }
 }
-pub type CellId = String;
-pub struct Cell {
-    pub raw: String,
-    pub value: CellValue,
-    pub ast: Option<Expr>,
-    pub dependencies: HashSet<CellId>,
-    pub used_by: HashSet<CellId>,
-}
-pub enum CellValue {
-    Empty,
-    Number(f64),
-    Text(String),
-    Error(String),
-}
-
-impl CellValue {
-    pub fn from_str(s: &str) -> Self {
-        let trimmed = s.trim();
-
-        // Check if empty
-        if trimmed.is_empty() {
-            return CellValue::Empty;
-        }
-
-        // Try to parse as number
-        match trimmed.parse::<f64>() {
-            Ok(num) => CellValue::Number(num),
-            Err(_) => CellValue::Text(trimmed.to_string()),
-        }
-    }
-}
-
-pub struct Expr {}
