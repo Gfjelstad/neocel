@@ -16,12 +16,17 @@ impl Window for TextWindow {
         // Get window state and document
         let window = &engine.windows[&self.window_id];
         let doc = &engine.docs[&window.doc_id];
-        let rect = draw_border(rect, buffer, self.window_id == engine.active_window.clone());
+        let rect = draw_border(
+            &self.window_id,
+            rect,
+            buffer,
+            self.window_id == engine.active_window.clone(),
+        );
 
         if let DocumentData::Text(lines) = &doc.data {
             let bg = engine.config.get_style_color("background", None);
             let fg = engine.config.get_style_color("foreground", None);
-            let cursor_row = window.cursor_row + 1; // for border
+            let cursor_row = window.cursor_row; // for border
             let cursor_col = window.cursor_col;
 
             // Iterate over each cell in the window rect
@@ -44,7 +49,7 @@ impl Window for TextWindow {
                     }
 
                     // Cursor highlight
-                    if line_idx == cursor_row
+                    if row == cursor_row
                         && col_idx == rect.x as usize + cursor_col
                         && self.window_id == engine.active_window
                     {

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::{
     config::Config,
-    engine::{Engine, EngineEvent, LayoutNode, SplitDir, WindowId},
+    engine::{Engine, EngineEvent, WindowId, layout::LayoutNode},
     render::{
         screen_buffer::ScreenBuffer,
         windows::{info::InfoWindow, table::TableWindow, text::TextWindow},
@@ -14,11 +14,12 @@ pub mod screen_buffer;
 pub mod styling;
 pub mod windows;
 
+#[derive(Clone, Copy)]
 pub struct Rect {
-    x: usize,
-    y: usize,
-    width: usize,
-    height: usize,
+    pub x: usize,
+    pub y: usize,
+    pub width: usize,
+    pub height: usize,
 }
 
 pub struct UI {
@@ -49,93 +50,17 @@ impl UI {
     }
 
     pub fn draw_popups(&mut self, engine: &mut Engine, rect: &Rect) {
-        if let Some(popup) = engine.popups.clone() {
-            let popup_rect = match popup.position {
-                crate::engine::PopupPosition::TopRight => Rect {
-                    x: rect.width - popup.width,
-                    y: 0,
-                    width: popup.width,
-                    height: popup.height,
-                },
-                crate::engine::PopupPosition::TopLeft => Rect {
-                    x: 0,
-                    y: 0,
-                    width: popup.width,
-                    height: popup.height,
-                },
-                crate::engine::PopupPosition::BottomRight => Rect {
-                    x: rect.width - popup.width,
-                    y: 0,
-                    width: popup.width,
-                    height: popup.height,
-                },
-                crate::engine::PopupPosition::BottonLeft => Rect {
-                    x: 0,
-                    y: rect.height - popup.height,
-                    width: popup.width,
-                    height: popup.height,
-                },
-                crate::engine::PopupPosition::Center => Rect {
-                    x: rect.width.div_euclid(2) - popup.width.div_euclid(2),
-                    y: rect.height.div_euclid(2) - popup.height.div_euclid(2),
-                    width: popup.width,
-                    height: popup.height,
-                },
-            };
+        if let Some(mut popup) = engine.popups.clone() {
+            let popup_rect = popup.get_rect(rect);
             self.draw_layout_node(engine, &popup_rect, &popup.layout);
         }
     }
     pub fn draw_layout_node(&mut self, engine: &mut Engine, rect: &Rect, node: &LayoutNode) {
-        match node {
-            LayoutNode::Leaf(win_id) => {
-                let win = &self.windows[win_id];
-                win.draw(rect, engine, &mut self.screen_buffer);
-            }
-            LayoutNode::Split {
-                direction,
-                ratio,
-                first,
-                second,
-            } => {
-                let (rect_1, rect_2) = match direction {
-                    SplitDir::Vert => {
-                        let split_value = (rect.height as f32 * ratio) as usize;
-                        (
-                            Rect {
-                                x: rect.x,
-                                y: rect.y,
-                                width: rect.width,
-                                height: split_value,
-                            },
-                            Rect {
-                                x: rect.x,
-                                y: split_value,
-                                width: rect.width,
-                                height: rect.height - split_value,
-                            },
-                        )
-                    }
-                    SplitDir::Horz => {
-                        let split_value = (rect.width as f32 * ratio) as usize;
-                        (
-                            Rect {
-                                x: rect.x,
-                                y: rect.y,
-                                height: rect.height,
-                                width: split_value,
-                            },
-                            Rect {
-                                x: split_value,
-                                y: rect.x,
-                                height: rect.height,
-                                width: rect.width - split_value,
-                            },
-                        )
-                    }
-                };
-                self.draw_layout_node(engine, &rect_1, first);
-                self.draw_layout_node(engine, &rect_2, second);
-            }
+        let node_rects = node.get_rects(rect);
+
+        for (window_id, rect) in node_rects {
+            let win = &self.windows[&window_id];
+            win.draw(&rect, engine, &mut self.screen_buffer);
         }
     }
 
@@ -164,6 +89,9 @@ impl UI {
                 self.windows.insert(win_id, window);
             }
             EngineEvent::WindowDocChange(_window_id, _doc_id) => {}
+            EngineEvent::WindowClose(window_id) => {
+                self.windows.remove(&window_id);
+            }
             _ => {}
         }
     }

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, io::stdout};
+use std::{collections::HashMap, env, io::stdout, panic};
 
 use crossterm::{
     ExecutableCommand,
@@ -22,8 +22,20 @@ fn main() -> Result<(), String> {
     enable_raw_mode().unwrap();
     stdout().execute(Hide).unwrap();
     stdout().execute(EnableMouseCapture).unwrap();
+    
+    let _ = panic::catch_unwind(|| {
+        let _ = main_loop(_args);
+    });
 
-    let config = setup_config();
+
+    stdout().execute(DisableMouseCapture).unwrap();
+    stdout().execute(Show).unwrap();
+    disable_raw_mode().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn main_loop(_args: Vec<String> ) -> Result<(), String> {
+let config = setup_config();
     let mut ui = setup_ui(&config);
     let mut engine = setup_engine(config);
     ui.handle_events(&mut engine);
@@ -43,10 +55,6 @@ fn main() -> Result<(), String> {
         ui.handle_events(&mut engine);
         ui.draw(&mut engine);
     }
-
-    stdout().execute(DisableMouseCapture).unwrap();
-    stdout().execute(Show).unwrap();
-    disable_raw_mode().map_err(|e| e.to_string())?;
     Ok(())
 }
 

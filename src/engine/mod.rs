@@ -6,7 +6,9 @@ use std::{
     vec,
 };
 pub mod document;
+pub mod layout;
 pub mod parse;
+pub mod popup;
 use crossterm::event::{self, Event, KeyEvent, KeyEventState};
 use uuid::Uuid;
 
@@ -14,8 +16,11 @@ use crate::{
     config::{CommandFn, Config},
     engine::{
         document::{DocId, DocType, Document, DocumentData},
+        layout::{LayoutNode, SplitDir},
         parse::parse_csv_to_doc,
+        popup::{PopupPosition, PopupWindow},
     },
+    render::Rect,
 };
 
 pub type EngineEventCallback = Box<dyn FnMut(&mut Engine, &EngineEvent)>;
@@ -150,6 +155,14 @@ impl Engine {
         self.events.push(EngineEvent::WindowCreate(win_id.clone()));
         Ok((win_id, doc_id))
     }
+    pub fn close_window(&mut self, window_id: &String) -> Result<(), String> {
+        self.windows.remove(window_id);
+        Ok(())
+    }
+    pub fn close_doc(&mut self, doc_id: &String) -> Result<(), String> {
+        self.docs.remove(doc_id);
+        Ok(())
+    }
 
     pub fn split_window_document(&mut self, doc: DocumentData, direction: SplitDirection) {
         let (doc_id, doc) = Document::new(doc, None);
@@ -203,47 +216,8 @@ impl Engine {
                 .push(EngineEvent::WindowCreate(window_id.clone()));
         }
     }
+}
 
-    // pub fn replace_window_document(&mut self, doc: Document, window_id: WindowId) -> WindowId {
-    //     let doc_id = Uuid::new_v4().to_string();
-    //     self.docs.insert(doc_id.clone(), doc);
-    //     let window_id = Uuid::new_v4().to_string();
-    //     self.windows.insert(
-    //         window_id.clone(),
-    //         WindowState {
-    //             doc_id: doc_id.clone(),
-    //             cursor_row: 0,
-    //             cursor_col: 0,
-    //             scroll_rows: 0,
-    //             scroll_cols: 0,
-    //         },
-    //     );
-    //     self.events.push(EngineEvent::WindowDocChange(
-    //         window_id.clone(),
-    //         doc_id.clone(),
-    //     ));
-    //     if let Some(mut _node) = self.layout.find_child(window_id.clone()) {
-    //         _node = &mut LayoutNode::Leaf(window_id.clone());
-    //     }
-    //
-    //     window_id
-    // }
-}
-#[derive(Clone)]
-pub enum PopupPosition {
-    TopRight,
-    TopLeft,
-    BottomRight,
-    BottonLeft,
-    Center,
-}
-#[derive(Clone)]
-pub struct PopupWindow {
-    pub layout: LayoutNode,
-    pub position: PopupPosition,
-    pub width: usize,
-    pub height: usize,
-}
 pub enum SplitDirection {
     Up,
     Down,
@@ -302,45 +276,5 @@ impl WindowState {
                 scroll_cols: 0,
             },
         )
-    }
-}
-#[derive(Clone)]
-pub enum SplitDir {
-    Vert,
-    Horz,
-}
-#[derive(Clone)]
-pub enum LayoutNode {
-    Leaf(WindowId),
-    Split {
-        direction: SplitDir,
-        ratio: f32,
-        first: Box<LayoutNode>,
-        second: Box<LayoutNode>,
-    },
-}
-impl LayoutNode {
-    fn find_child(&mut self, window_id: String) -> Option<&mut LayoutNode> {
-        let mut search = vec![self];
-
-        while let Some(current) = search.pop() {
-            match current {
-                LayoutNode::Leaf(curr_id) => {
-                    if &window_id == curr_id {
-                        return Some(current);
-                    }
-                }
-                LayoutNode::Split {
-                    direction,
-                    ratio,
-                    first,
-                    second,
-                } => {
-                    search.push(first);
-                    search.push(second);
-                }
-            }
-        }
-        None
     }
 }

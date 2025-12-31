@@ -11,7 +11,12 @@ pub struct InfoWindow {
 impl Window for InfoWindow {
     fn draw(&self, rect: &Rect, engine: &mut Engine, buffer: &mut ScreenBuffer) {
         // Draw border; focused if this window is active
-        let inner_rect = draw_border(rect, buffer, self.window_id == engine.active_window);
+        let inner_rect = draw_border(
+            &self.window_id,
+            rect,
+            buffer,
+            self.window_id == engine.active_window,
+        );
 
         // Get the document (string)
         let doc = &engine.docs[&engine.windows[&self.window_id].doc_id];

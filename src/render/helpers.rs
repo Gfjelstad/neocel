@@ -2,7 +2,7 @@ use crossterm::style::Attribute;
 
 use crate::render::{Rect, screen_buffer::ScreenBuffer};
 
-pub fn draw_border(rect: &Rect, buffer: &mut ScreenBuffer, focused: bool) -> Rect {
+pub fn draw_border(win_id: &String, rect: &Rect, buffer: &mut ScreenBuffer, focused: bool) -> Rect {
     // Decide which characters to use
     let (h_line, v_line, tl, tr, bl, br) = if focused {
         ('═', '║', '╔', '╗', '╚', '╝')
@@ -16,8 +16,13 @@ pub fn draw_border(rect: &Rect, buffer: &mut ScreenBuffer, focused: bool) -> Rec
         let y_top = rect.y;
         let y_bot = rect.y + rect.height - 1;
 
-        buffer.cells[y_top][x].ch = h_line;
-        buffer.cells[y_top][x].attrs.push(Attribute::Bold);
+        if x >= 4 && x < 4 + win_id.len() {
+            buffer.cells[y_top][x].ch = win_id.chars().nth(x - 4).unwrap_or(' ');
+            buffer.cells[y_top][x].attrs.push(Attribute::Bold);
+        } else {
+            buffer.cells[y_top][x].ch = h_line;
+            buffer.cells[y_top][x].attrs.push(Attribute::Bold);
+        }
 
         buffer.cells[y_bot][x].ch = h_line;
         buffer.cells[y_bot][x].attrs.push(Attribute::Bold);

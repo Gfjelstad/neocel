@@ -1,4 +1,4 @@
-use crate::engine::{self, Engine, EngineEvent, document::DocumentData};
+use crate::engine::{Engine, EngineEvent, document::DocumentData, popup::PopupPosition};
 
 pub fn move_down(engine: &mut Engine) -> Result<(), String> {
     if let Some(win) = engine.windows.get_mut(&engine.active_window) {
@@ -25,22 +25,24 @@ pub fn hello_world_popup(engine: &mut Engine) -> Result<(), String> {
         String::new(),
         String::new(),
     ]);
-    let (win_id, doc_id) =
-        engine.create_popup(data, 40, 7, crate::engine::PopupPosition::TopRight)?;
+    let (win_id, doc_id) = engine.create_popup(data, 40, 7, PopupPosition::TopRight)?;
     engine.subscribe(
         crate::engine::EngineEventKind::InputEvent,
         Box::new(move |engine, event| {
             if let EngineEvent::InputEvent(input) = event {
-                let win = &engine.windows[&win_id];
+                let _win = &engine.windows[&win_id];
                 let doc = engine.docs.get_mut(&doc_id).unwrap();
+                let current_window = &engine.windows[&engine.active_window.clone()];
                 if let DocumentData::Text(data) = &mut doc.data {
                     if let Some(mouse) = input.as_mouse_event() {
                         if mouse.kind.is_up() {
                             data[0] = format!("Mouse Position: {:?},{:?}", mouse.row, mouse.column);
                         }
                     } else {
-                        data[1] =
-                            format!("Cursor Position: {:?},{:?}", win.cursor_row, win.cursor_col);
+                        data[1] = format!(
+                            "Cursor Position: {:?},{:?}",
+                            current_window.cursor_row, current_window.cursor_col
+                        );
                     }
                 }
             }
