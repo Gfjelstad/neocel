@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::PathBuf;
 
-use crate::engine::document::{Cell, CellValue, DocType, Document};
+use crate::engine::document::{DocType, Document};
+use crate::engine::documents::spreadsheet::{Cell, CellValue, SpreadSheet};
 
 pub fn parse_csv_to_doc(path: PathBuf) -> Result<Document, Box<dyn std::error::Error>> {
     let file = File::open(path.clone())?;
@@ -35,6 +36,6 @@ pub fn parse_csv_to_doc(path: PathBuf) -> Result<Document, Box<dyn std::error::E
         path: Some(path),
         undo_stack: vec![],
         doc_type: DocType::SpreadSheet,
-        data: crate::engine::DocumentData::SpreadSheet(outer_map),
+        data: crate::engine::DocumentData::SpreadSheet(SpreadSheet { cells: outer_map }),
     })
 }

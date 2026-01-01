@@ -5,9 +5,11 @@ use std::{
 
 use uuid::Uuid;
 
-use crate::engine::Edit;
+use crate::engine::{Edit, documents::spreadsheet::SpreadSheet};
 
 pub type DocId = String;
+
+#[derive(Eq, Hash, PartialEq)]
 pub enum DocType {
     SpreadSheet,
     Info,
@@ -39,42 +41,8 @@ impl Document {
     }
 }
 pub enum DocumentData {
-    SpreadSheet(HashMap<usize, HashMap<usize, Cell>>),
+    SpreadSheet(SpreadSheet),
     Text(Vec<String>),
-
     Help(String),
     Config(String),
 }
-pub type CellId = String;
-pub struct Cell {
-    pub raw: String,
-    pub value: CellValue,
-    pub ast: Option<Expr>,
-    pub dependencies: HashSet<CellId>,
-    pub used_by: HashSet<CellId>,
-}
-pub enum CellValue {
-    Empty,
-    Number(f64),
-    Text(String),
-    Error(String),
-}
-
-impl CellValue {
-    pub fn parse_from_str(s: &str) -> Self {
-        let trimmed = s.trim();
-
-        // Check if empty
-        if trimmed.is_empty() {
-            return CellValue::Empty;
-        }
-
-        // Try to parse as number
-        match trimmed.parse::<f64>() {
-            Ok(num) => CellValue::Number(num),
-            Err(_) => CellValue::Text(trimmed.to_string()),
-        }
-    }
-}
-
-pub struct Expr {}

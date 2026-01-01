@@ -1,11 +1,6 @@
-use std::{
-    collections::{HashMap, HashSet},
-    io,
-    path::PathBuf,
-    str::FromStr,
-    vec,
-};
+use std::{collections::HashMap, vec};
 pub mod document;
+pub mod documents;
 pub mod layout;
 pub mod parse;
 pub mod popup;
@@ -16,11 +11,10 @@ use crossterm::{
 use uuid::Uuid;
 
 use crate::{
-    config::{CommandFn, Config},
+    config::Config,
     engine::{
         document::{DocId, DocType, Document, DocumentData},
         layout::{LayoutNode, SplitDir},
-        parse::parse_csv_to_doc,
         popup::{PopupPosition, PopupWindow},
     },
     render::Rect,
@@ -162,9 +156,7 @@ impl Engine {
                 }
                 Ok(Some(key_event))
             }
-            _ => {
-                return Ok(None);
-            }
+            _ => Ok(None),
         }
 
         // Normalize
@@ -199,16 +191,19 @@ impl Engine {
         let (win_id, win) = WindowState::new(doc_id.clone());
         self.windows.insert(win_id.clone(), win);
         self.docs.insert(doc_id.clone(), doc);
-        return win_id;
+        win_id
     }
     pub fn close_window(&mut self, window_id: &String) -> Result<(), String> {
         self.windows.remove(window_id);
         if let Some(old_layout) = std::mem::take(&mut self.layout) {
             let new_layout = old_layout.remove_window(window_id).unwrap_or_else(|| {
                 let new_win = self.create_empty_window();
-                return LayoutNode::Leaf(new_win);
+                LayoutNode::Leaf(new_win)
             });
             self.layout = Some(new_layout);
+        }
+        if &self.active_window == window_id {
+            self.active_window = self.windows.keys().next().unwrap().clone();
         }
         self.emit(&EngineEvent::WindowClose(window_id.clone()));
         Ok(())
@@ -235,7 +230,11 @@ impl Engine {
                 scroll_cols: 0,
             },
         );
-        if let Some(old_node) = self.layout.unwrap().find_child(self.active_window.clone()) {
+        if let Some(old_node) = self
+            .layout
+            .as_mut()
+            .and_then(|l| l.find_child(self.active_window.clone()))
+        {
             let cloned: LayoutNode = old_node.clone();
             let new_node = LayoutNode::Leaf(window_id.clone());
             let first: LayoutNode;

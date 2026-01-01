@@ -36,6 +36,9 @@ impl UI {
     }
 
     pub fn draw(&mut self, engine: &mut Engine) {
+        if engine.layout.is_none() {
+            return;
+        }
         let (cols, rows) = crossterm::terminal::size().expect("could not get size");
         let layout = engine.layout.clone();
         let rect = Rect {
@@ -44,7 +47,7 @@ impl UI {
             width: cols as usize,
             height: rows as usize,
         };
-        self.draw_layout_node(engine, &rect, &layout);
+        self.draw_layout_node(engine, &rect, &layout.unwrap());
         self.draw_popups(engine, &rect);
         self.screen_buffer.flush();
     }

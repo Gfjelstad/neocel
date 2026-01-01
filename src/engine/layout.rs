@@ -15,6 +15,7 @@ pub enum LayoutNode {
         second: Box<LayoutNode>,
     },
 }
+
 impl LayoutNode {
     pub fn remove_window(self, target: &WindowId) -> Option<LayoutNode> {
         match self {
