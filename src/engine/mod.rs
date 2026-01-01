@@ -93,6 +93,7 @@ impl Engine {
             f(self, event);
         }
         self.subscriptions.insert(kind, subs);
+        self.events.push(event.clone());
     }
 
     pub fn get_current_window(&mut self) -> (&mut WindowState, &mut Document) {
@@ -259,6 +260,7 @@ pub enum SplitDirection {
     Left,
     Right,
 }
+#[derive(Debug, Clone)]
 pub enum EngineEvent {
     WindowCreate(WindowId),
     WindowClose(WindowId),
