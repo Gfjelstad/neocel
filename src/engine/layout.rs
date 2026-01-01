@@ -16,6 +16,44 @@ pub enum LayoutNode {
     },
 }
 impl LayoutNode {
+    pub fn remove_window(self, target: &WindowId) -> Option<LayoutNode> {
+        match self {
+            LayoutNode::Leaf(id) => {
+                if &id == target {
+                    None // delete this leaf
+                } else {
+                    Some(LayoutNode::Leaf(id))
+                }
+            }
+
+            LayoutNode::Split {
+                direction,
+                ratio,
+                first,
+                second,
+            } => {
+                let left = first.remove_window(target);
+                let right = second.remove_window(target);
+
+                match (left, right) {
+                    (None, None) => None, // entire subtree vanished
+                    (Some(node), None) | (None, Some(node)) => {
+                        // Collapse the split — sibling takes over
+                        Some(node)
+                    }
+                    (Some(l), Some(r)) => {
+                        // Both sides still exist, keep the split
+                        Some(LayoutNode::Split {
+                            direction,
+                            ratio,
+                            first: Box::new(l),
+                            second: Box::new(r),
+                        })
+                    }
+                }
+            }
+        }
+    }
     pub fn walk_nodes<F>(&self, rect: &Rect, f: &mut F)
     where
         F: FnMut(&WindowId, &Rect),

@@ -36,7 +36,7 @@ pub struct Engine {
     pub windows: HashMap<WindowId, WindowState>,
     pub active_window: WindowId,
 
-    pub layout: LayoutNode,
+    pub layout: Option<LayoutNode>,
     pub popups: Option<PopupWindow>,
     pub config: Config,
 
@@ -76,7 +76,7 @@ impl Engine {
                 },
             )]),
             command_context: vec![],
-            layout: LayoutNode::Leaf(window_id),
+            layout: Some(LayoutNode::Leaf(window_id)),
         }
     }
     pub fn subscribe(&mut self, event: EngineEventKind, func: EngineEventCallback) {
@@ -115,24 +115,27 @@ impl Engine {
     }
     pub fn process_input(&mut self) -> Result<Option<KeyEvent>, String> {
         let event = self.await_input()?;
+
         match event {
             Event::Mouse(event) => {
                 let (col, row) = (event.column as usize, event.row as usize);
                 let (cols, rows) = terminal::size().map_err(|e| e.to_string())?;
-                let tiles = self.layout.get_rects(&Rect {
-                    x: 0,
-                    y: 0,
-                    width: cols as usize,
-                    height: rows as usize,
-                });
-                for (win, rect) in tiles {
-                    if rect.x <= col
-                        && rect.x + rect.width > col
-                        && rect.y <= row
-                        && rect.y + rect.height > row
-                    {
-                        self.active_window = win;
-                        self.emit(&EngineEvent::LayoutChange);
+                if let Some(layout) = &self.layout {
+                    let tiles = layout.get_rects(&Rect {
+                        x: 0,
+                        y: 0,
+                        width: cols as usize,
+                        height: rows as usize,
+                    });
+                    for (win, rect) in tiles {
+                        if rect.x <= col
+                            && rect.x + rect.width > col
+                            && rect.y <= row
+                            && rect.y + rect.height > row
+                        {
+                            self.active_window = win;
+                            self.emit(&EngineEvent::LayoutChange);
+                        }
                     }
                 }
                 Ok(None)
@@ -190,8 +193,23 @@ impl Engine {
         self.events.push(EngineEvent::WindowCreate(win_id.clone()));
         Ok((win_id, doc_id))
     }
+
+    pub fn create_empty_window(&mut self) -> String {
+        let (doc_id, doc) = Document::new(DocumentData::Text(vec![]), None);
+        let (win_id, win) = WindowState::new(doc_id.clone());
+        self.windows.insert(win_id.clone(), win);
+        self.docs.insert(doc_id.clone(), doc);
+        return win_id;
+    }
     pub fn close_window(&mut self, window_id: &String) -> Result<(), String> {
         self.windows.remove(window_id);
+        if let Some(old_layout) = std::mem::take(&mut self.layout) {
+            let new_layout = old_layout.remove_window(window_id).unwrap_or_else(|| {
+                let new_win = self.create_empty_window();
+                return LayoutNode::Leaf(new_win);
+            });
+            self.layout = Some(new_layout);
+        }
         self.emit(&EngineEvent::WindowClose(window_id.clone()));
         Ok(())
     }
@@ -201,6 +219,9 @@ impl Engine {
     }
 
     pub fn split_window_document(&mut self, doc: DocumentData, direction: SplitDirection) {
+        if self.layout.is_none() {
+            return;
+        }
         let (doc_id, doc) = Document::new(doc, None);
         let window_id = Uuid::new_v4().to_string();
         self.docs.insert(doc_id.clone(), doc);
@@ -214,7 +235,7 @@ impl Engine {
                 scroll_cols: 0,
             },
         );
-        if let Some(old_node) = self.layout.find_child(self.active_window.clone()) {
+        if let Some(old_node) = self.layout.unwrap().find_child(self.active_window.clone()) {
             let cloned: LayoutNode = old_node.clone();
             let new_node = LayoutNode::Leaf(window_id.clone());
             let first: LayoutNode;
