@@ -8,9 +8,9 @@ use crate::{
     input::Token,
 };
 
-pub struct TokenNode {
-    pub children: HashMap<Key, TokenNode>,
-    pub action: Option<Token>,
+pub struct TokenNode<T> {
+    pub children: HashMap<Key, TokenNode<T>>,
+    pub action: Option<T>,
 }
 
 pub enum Mode {

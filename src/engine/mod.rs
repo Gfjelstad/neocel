@@ -11,12 +11,14 @@ use crossterm::{
 use uuid::Uuid;
 
 use crate::{
+    commands::Key,
     config::Config,
     engine::{
         document::{DocId, DocType, Document, DocumentData},
         layout::{LayoutNode, SplitDir},
         popup::{PopupPosition, PopupWindow},
     },
+    input::Operator,
     render::Rect,
 };
 
@@ -24,7 +26,6 @@ pub type EngineEventCallback = Box<dyn FnMut(&mut Engine, &EngineEvent)>;
 
 pub struct Engine {
     pub events: Vec<EngineEvent>,
-    pub command_context: Vec<u8>,
     pub docs: HashMap<DocId, Document>,
 
     pub windows: HashMap<WindowId, WindowState>,
@@ -33,6 +34,8 @@ pub struct Engine {
     pub layout: Option<LayoutNode>,
     pub popups: Option<PopupWindow>,
     pub config: Config,
+
+    pub operator_map: HashMap<Key, Operator>,
 
     pub should_quit: bool,
 
@@ -56,6 +59,7 @@ impl Engine {
                 },
             )]),
             popups: None,
+            operator_map: HashMap::new(),
             should_quit: false,
             active_window: window_id.clone(),
             config,
@@ -69,7 +73,6 @@ impl Engine {
                     data: DocumentData::Text(vec!["".to_string()]),
                 },
             )]),
-            command_context: vec![],
             layout: Some(LayoutNode::Leaf(window_id)),
         }
     }
