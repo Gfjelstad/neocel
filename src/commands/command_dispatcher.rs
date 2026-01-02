@@ -42,10 +42,10 @@ impl CommandDispatcher {
         py: Python,
     ) -> CommandResult {
         // 1️⃣ Look for per-document override first
-        if let Some(doc_cmds) = self.per_document.get_mut(&doc_type) {
-            if let Some(func) = doc_cmds.get_mut(&cmd.id) {
-                return Self::call_command_func(func, ctx, cmd.args.clone(), py);
-            }
+        if let Some(doc_cmds) = self.per_document.get_mut(&doc_type)
+            && let Some(func) = doc_cmds.get_mut(&cmd.id)
+        {
+            return Self::call_command_func(func, ctx, cmd.args.clone(), py);
         }
 
         // 2️⃣ Fallback to global

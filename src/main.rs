@@ -21,6 +21,7 @@ use crate::{
 pub mod commands;
 pub mod config;
 pub mod engine;
+pub mod input;
 pub mod render;
 fn main() -> Result<(), String> {
     let _args: Vec<String> = env::args().collect();
