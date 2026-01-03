@@ -1,4 +1,8 @@
-use std::{cmp::{max_by, min}, collections::HashMap, hash::Hash};
+use std::{
+    cmp::{max_by, min},
+    collections::HashMap,
+    hash::Hash,
+};
 
 use crossterm::event::KeyEvent;
 
@@ -18,7 +22,7 @@ impl Window for TableWindow {
             buffer,
             self.window_id == engine.active_window.clone(),
         );
-        
+
         let doc = &engine.docs[&engine.windows[&self.window_id].doc_id];
         if let DocumentData::SpreadSheet(data) = &doc.data {
             let max_rows = data.cells.keys().max().copied().unwrap_or(0);
@@ -61,7 +65,7 @@ impl Window for TableWindow {
             buffer.cells[rect.y][loc]
                 .attrs
                 .push(crossterm::style::Attribute::Bold);
-            
+
             loc += 1;
             for col in 0..=max_cols {
                 let size = col_widths[&col];
@@ -87,8 +91,8 @@ impl Window for TableWindow {
                 let buf_y = row + rect.y + 1;
                 let color = if row % 2 == 0 { bg } else { bg_secondary };
                 let mut loc: usize = rect.x;
-                buffer.cells[rect.x][loc].ch = '⎸';
-                buffer.cells[rect.x][loc].bg = color;
+                buffer.cells[buf_y][loc].ch = '⎸';
+                buffer.cells[buf_y][loc].bg = fg;
                 loc += 1;
                 for col in 0..=max_cols {
                     let size = col_widths[&col];

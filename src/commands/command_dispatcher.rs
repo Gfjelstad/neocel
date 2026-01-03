@@ -75,6 +75,12 @@ impl CommandDispatcher {
         }
     }
 }
+
+impl Default for CommandDispatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 pub enum CommandFunction {
     Rust(Box<CommandFn>),
     Python(Py<PyAny>),

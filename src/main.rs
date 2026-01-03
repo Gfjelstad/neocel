@@ -41,13 +41,17 @@ fn main() -> Result<(), String> {
     stdout().execute(EnableMouseCapture).unwrap();
 
     // let res = panic::catch_unwind(|| {
-    let _ = main_loop(_args);
+    let res = main_loop(_args);
     // });
 
     stdout().execute(DisableMouseCapture).unwrap();
     stdout().execute(Show).unwrap();
     disable_raw_mode().map_err(|e| e.to_string())?;
 
+    if res.is_err() {
+        println!("{:?}", res.err().unwrap().to_string());
+        return Ok(());
+    }
     stdout()
         .queue(Clear(ClearType::All))
         .unwrap()
@@ -144,7 +148,11 @@ fn setup_config() -> config::Config {
 fn setup_engine(config: Config, args: Vec<String>) -> Engine {
     let mut doc = None;
     if args.len() >= 1 && args[1].contains(".csv") {
-        doc = Some(parse_csv_to_doc(PathBuf::from(args[1].clone())).map_err(|e|println!("{:?}", e.to_string())).unwrap());
+        doc = Some(
+            parse_csv_to_doc(PathBuf::from(args[1].clone()))
+                .map_err(|e| println!("{:?}", e.to_string()))
+                .unwrap(),
+        );
     }
     let e = Engine::new(config, doc);
 
