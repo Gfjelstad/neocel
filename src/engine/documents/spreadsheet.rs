@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::Serialize;
+
 use crate::engine::{
     WindowState,
     documents::{DocumentDataProvider, InsertModeProvider},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct SpreadSheetDocumentData {
     pub cells: HashMap<usize, HashMap<usize, Cell>>,
 }
@@ -27,7 +29,7 @@ impl InsertModeProvider for SpreadSheetDocumentData {
 }
 pub type CellId = String;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Cell {
     pub raw: String,
     pub value: CellValue,
@@ -36,7 +38,7 @@ pub struct Cell {
     pub used_by: HashSet<CellId>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum CellValue {
     Empty,
     Number(f64),
@@ -60,5 +62,5 @@ impl CellValue {
         }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Expr {}

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{commands::Key, input::Token};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ActionNode {
     pub children: HashMap<Key, ActionNode>,
     pub action: Option<Token>,

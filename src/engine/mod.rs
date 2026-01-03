@@ -8,6 +8,7 @@ use crossterm::{
     event::{self, Event, KeyEvent, KeyEventState},
     terminal,
 };
+use serde::{self, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -311,12 +312,14 @@ pub enum EngineEventKind {
 }
 pub struct Edit {}
 pub type WindowId = String;
+#[derive(Serialize, Debug)]
 pub struct WindowState {
     pub doc_id: DocId,
     pub cursor_row: usize,
     pub cursor_col: usize,
     pub scroll_rows: usize,
     pub scroll_cols: usize,
+    #[serde(skip)]
     pub keymap: Option<ActionNode>,
 }
 impl WindowState {

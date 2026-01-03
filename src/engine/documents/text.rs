@@ -1,5 +1,7 @@
 use std::collections::btree_map::Range;
 
+use serde::Serialize;
+
 use crate::{
     commands::KeyCode,
     engine::{
@@ -9,6 +11,7 @@ use crate::{
     },
 };
 
+#[derive(Serialize)]
 pub struct TextDocumentData {
     pub data: Vec<String>,
     pub selected: Option<((usize, usize), (usize, usize))>,

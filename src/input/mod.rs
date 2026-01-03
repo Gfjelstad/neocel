@@ -5,7 +5,7 @@ pub mod keymaps;
 pub type Operator = String;
 pub type Motion = String;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Token {
     Digit(u32),
     Operator(Operator),

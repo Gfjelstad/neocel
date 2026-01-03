@@ -1,20 +1,23 @@
+pub mod engine_api;
+pub mod utils;
 use std::collections::HashMap;
 
-use serde_json::Value;
+use serde_json::{Value, to_string};
 
 use crate::{
     commands::command_dispatcher::CommandDispatcher, engine::Engine,
     input::input_engine::InputEngine, render::UI,
 };
 
-pub type APIMethodParams<'a> = (
-    &'a mut Engine,
-    &'a mut InputEngine,
-    &'a mut UI,
-    &'a mut CommandDispatcher,
-    &'a mut Value,
-);
-pub type APIMethod = fn(&mut APIMethodParams) -> Result<Option<Value>, String>;
+pub struct APIMethodParams<'a> {
+    engine: &'a mut Engine,
+    input_engine: &'a mut InputEngine,
+    ui: &'a mut UI,
+    command_dispatch: &'a mut CommandDispatcher,
+    params: &'a mut Value,
+}
+pub type APIMethodResult = Result<Option<Value>, String>;
+pub type APIMethod = for<'a, 'b> fn(&'b mut APIMethodParams<'a>) -> APIMethodResult;
 pub struct API {
     commands: HashMap<String, APIMethod>,
     queue: Vec<(String, Value)>,
@@ -32,14 +35,14 @@ impl API {
     }
 
     pub fn register_api(&mut self, methods: HashMap<&str, APIMethod>) {
-        let transformed: HashMap<String, APIMethod> = methods
+        let mut t: HashMap<String, APIMethod> = methods
             .into_iter()
             .map(|(k, v)| (k.to_string(), v))
             .collect();
-        self.commands.extend(transformed);
+        self.commands.extend(t);
     }
 
-    pub fn with_api<F>(
+    pub fn runcommand<F>(
         &mut self,
         engine: &mut Engine,
         input_engine: &mut InputEngine,
@@ -55,7 +58,13 @@ impl API {
             |command_name: String, mut params: Value| -> Result<Option<Value>, String> {
                 if let Some(func) = self.commands.get(&command_name) {
                     // assuming func expects a mutable tuple of references
-                    let mut tuple_args = (engine, input_engine, ui, command_dispatch, &mut params);
+                    let mut tuple_args = APIMethodParams {
+                        engine,
+                        input_engine,
+                        ui,
+                        command_dispatch,
+                        params: &mut params,
+                    };
                     func(&mut tuple_args)
                 } else {
                     Ok(None)
@@ -73,4 +82,8 @@ impl Default for API {
     fn default() -> Self {
         Self::new()
     }
+}
+
+trait APIRegister {
+    fn register_methods(&mut self, api: &mut API);
 }

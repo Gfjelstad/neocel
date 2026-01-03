@@ -3,6 +3,7 @@ use std::{
     path::PathBuf,
 };
 
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
@@ -18,17 +19,20 @@ use crate::{
 
 pub type DocId = String;
 
-#[derive(Eq, Clone, Hash, PartialEq)]
+#[derive(Eq, Clone, Hash, PartialEq, Serialize)]
 pub enum DocType {
     SpreadSheet,
     Info,
     Text,
 }
+#[derive(Serialize)]
 pub struct Document {
     pub doc_type: DocType,
     pub path: Option<PathBuf>,
     pub data: DocumentData,
+    #[serde(skip)]
     pub undo_stack: Vec<Edit>,
+    #[serde(skip)]
     pub keymap: Option<ActionNode>,
 }
 impl Document {
@@ -51,6 +55,8 @@ impl Document {
         )
     }
 }
+
+#[derive(Serialize)]
 pub enum DocumentData {
     SpreadSheet(SpreadSheetDocumentData),
     Text(TextDocumentData),
