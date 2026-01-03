@@ -31,7 +31,15 @@ impl API {
         self.queue.push((method.to_string(), params));
     }
 
-    pub fn runcommand<F>(
+    pub fn register_api(&mut self, methods: HashMap<&str, APIMethod>) {
+        let transformed: HashMap<String, APIMethod> = methods
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        self.commands.extend(transformed);
+    }
+
+    pub fn with_api<F>(
         &mut self,
         engine: &mut Engine,
         input_engine: &mut InputEngine,

@@ -134,26 +134,6 @@ impl Engine {
                 let converted = crate::commands::Key::from(key_event);
 
                 Ok(Some(converted))
-                // let normalized = KeyEvent {
-                //     code: key_event.code,
-                //     modifiers: key_event.modifiers,
-                //     state: KeyEventState::empty(),
-                //     kind: event::KeyEventKind::Press,
-                // };
-                // if key_event.kind != event::KeyEventKind::Press {
-                //     return Ok(Some(key_event));
-                // }
-                //
-                // let command_name = self.config.keybinds.get(&normalized).cloned();
-                //
-                // let command_fn =
-                //     command_name.and_then(|name| self.config.commands.get(&name).cloned());
-                //
-                // if let Some(fun) = command_fn {
-                //     fun(self)?;
-                //     return Ok(None);
-                // }
-                // Ok(Some(key_event))
             }
             _ => Ok(None),
         }
