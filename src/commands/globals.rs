@@ -1,4 +1,14 @@
-use crate::engine::{Engine, EngineEvent, document::DocumentData, popup::PopupPosition};
+use serde_json::{Value, json};
+
+use crate::{
+    commands::CommandRegistry,
+    engine::{
+        Engine, EngineEvent,
+        document::DocumentData,
+        documents::{DocumentDataProvider, text::TextDocumentData},
+        popup::PopupPosition,
+    },
+};
 
 pub fn move_down(engine: &mut Engine) -> Result<(), String> {
     if let Some(win) = engine.windows.get_mut(&engine.active_window) {
@@ -14,7 +24,7 @@ pub fn kill(engine: &mut Engine) -> Result<(), String> {
 }
 
 pub fn split_scratch_down(engine: &mut Engine) -> Result<(), String> {
-    let data = crate::engine::document::DocumentData::Text(vec!["".to_string()]);
+    let data = crate::engine::document::DocumentData::Text(TextDocumentData::new(""));
     engine.split_window_document(data, crate::engine::SplitDirection::Down);
     Ok(())
 }
@@ -27,11 +37,7 @@ pub fn close_window(engine: &mut Engine) -> Result<(), String> {
 }
 
 pub fn hello_world_popup(engine: &mut Engine) -> Result<(), String> {
-    let data = crate::engine::document::DocumentData::Text(vec![
-        String::new(),
-        String::new(),
-        String::new(),
-    ]);
+    let data = crate::engine::document::DocumentData::Text(TextDocumentData::new("\n\n"));
     let (win_id, doc_id) = engine.create_popup(data, 40, 7, PopupPosition::TopRight)?;
     engine.subscribe(
         crate::engine::EngineEventKind::InputEvent,
@@ -43,10 +49,11 @@ pub fn hello_world_popup(engine: &mut Engine) -> Result<(), String> {
                 if let DocumentData::Text(data) = &mut doc.data {
                     if let Some(mouse) = input.as_mouse_event() {
                         if mouse.kind.is_up() {
-                            data[0] = format!("Mouse Position: {:?},{:?}", mouse.row, mouse.column);
+                            data.data[0] =
+                                format!("Mouse Position: {:?},{:?}", mouse.row, mouse.column);
                         }
                     } else {
-                        data[1] = format!(
+                        data.data[1] = format!(
                             "Cursor Position: {:?},{:?}",
                             current_window.cursor_row, current_window.cursor_col
                         );
@@ -56,4 +63,43 @@ pub fn hello_world_popup(engine: &mut Engine) -> Result<(), String> {
         }),
     );
     Ok(())
+}
+
+pub struct DefaultGlobalCommands {}
+
+impl DefaultGlobalCommands {}
+impl CommandRegistry for DefaultGlobalCommands {
+    fn register_commands(
+        dispatcher: &mut super::command_dispatcher::CommandDispatcher,
+    ) -> Result<(), String> {
+        dispatcher.register_global(
+            "window.hello_world",
+            crate::commands::command_dispatcher::CommandFunction::Rust(Box::new(|ctx, _args| {
+                hello_world_popup(ctx.engine)?;
+                Ok(json!({}))
+            })),
+        );
+        dispatcher.register_global(
+            "window.close_current",
+            crate::commands::command_dispatcher::CommandFunction::Rust(Box::new(|ctx, _args| {
+                close_window(ctx.engine)?;
+                Ok(json!({}))
+            })),
+        );
+        dispatcher.register_global(
+            "window.split_scratch_down",
+            crate::commands::command_dispatcher::CommandFunction::Rust(Box::new(|ctx, _args| {
+                split_scratch_down(ctx.engine)?;
+                Ok(json!({}))
+            })),
+        );
+        dispatcher.register_global(
+            "kill",
+            crate::commands::command_dispatcher::CommandFunction::Rust(Box::new(|ctx, _args| {
+                kill(ctx.engine)?;
+                Ok(json!({}))
+            })),
+        );
+        Ok(())
+    }
 }

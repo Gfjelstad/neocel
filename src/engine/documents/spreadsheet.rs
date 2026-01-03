@@ -1,9 +1,33 @@
 use std::collections::{HashMap, HashSet};
 
-pub struct SpreadSheet {
+use crate::engine::{
+    WindowState,
+    documents::{DocumentDataProvider, InsertModeProvider},
+};
+
+#[derive(Debug)]
+pub struct SpreadSheetDocumentData {
     pub cells: HashMap<usize, HashMap<usize, Cell>>,
 }
+impl DocumentDataProvider for SpreadSheetDocumentData {
+    fn new(data: &str) -> Self {
+        Self {
+            cells: HashMap::new(),
+        }
+    }
+}
+impl InsertModeProvider for SpreadSheetDocumentData {
+    fn handle_key(
+        &mut self,
+        window: &mut WindowState,
+        key: crate::commands::Key,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+}
 pub type CellId = String;
+
+#[derive(Debug)]
 pub struct Cell {
     pub raw: String,
     pub value: CellValue,
@@ -11,6 +35,8 @@ pub struct Cell {
     pub dependencies: HashSet<CellId>,
     pub used_by: HashSet<CellId>,
 }
+
+#[derive(Debug)]
 pub enum CellValue {
     Empty,
     Number(f64),
@@ -34,5 +60,5 @@ impl CellValue {
         }
     }
 }
-
+#[derive(Debug)]
 pub struct Expr {}

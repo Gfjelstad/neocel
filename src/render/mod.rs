@@ -102,5 +102,4 @@ impl UI {
 
 pub trait Window {
     fn draw(&self, rect: &Rect, engine: &mut Engine, buffer: &mut ScreenBuffer);
-    fn handle_key(&mut self, key: KeyEvent, engine: &mut Engine);
 }

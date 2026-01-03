@@ -3,10 +3,10 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::PathBuf;
 
-use crate::engine::document::{DocType, Document};
-use crate::engine::documents::spreadsheet::{Cell, CellValue, SpreadSheet};
-
-pub fn parse_csv_to_doc(path: PathBuf) -> Result<Document, Box<dyn std::error::Error>> {
+use crate::engine::document::{DocId, Document};
+use crate::engine::documents::DocumentDataProvider;
+use crate::engine::documents::spreadsheet::{Cell, CellValue, SpreadSheetDocumentData};
+pub fn parse_csv_to_doc(path: PathBuf) -> Result<(DocId, Document), Box<dyn std::error::Error>> {
     let file = File::open(path.clone())?;
     let mut reader = ReaderBuilder::new().has_headers(false).from_reader(file);
 
@@ -32,10 +32,10 @@ pub fn parse_csv_to_doc(path: PathBuf) -> Result<Document, Box<dyn std::error::E
         outer_map.insert(row_idx, inner_map);
     }
 
-    Ok(Document {
-        path: Some(path),
-        undo_stack: vec![],
-        doc_type: DocType::SpreadSheet,
-        data: crate::engine::DocumentData::SpreadSheet(SpreadSheet { cells: outer_map }),
-    })
+    Ok(Document::new(
+        crate::engine::DocumentData::SpreadSheet(SpreadSheetDocumentData {
+            cells: outer_map
+        }),
+        Some(path),
+    ))
 }

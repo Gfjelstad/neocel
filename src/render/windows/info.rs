@@ -22,8 +22,8 @@ impl Window for InfoWindow {
         let doc = &engine.docs[&engine.windows[&self.window_id].doc_id];
 
         let content = match &doc.data {
-            DocumentData::Text(data) => data.join("\n"), // if you stored TextDocument as Vec<String>
-            DocumentData::Help(info) => info.clone(),    // for single String
+            DocumentData::Text(data) => data.data.join("\n"), // if you stored TextDocument as Vec<String>
+            DocumentData::Help(info) => info.clone(),         // for single String
             _ => return,
         };
 
@@ -86,5 +86,4 @@ impl Window for InfoWindow {
             }
         }
     }
-    fn handle_key(&mut self, _key: KeyEvent, _engine: &mut Engine) {}
 }

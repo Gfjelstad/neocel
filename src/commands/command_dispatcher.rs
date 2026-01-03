@@ -6,14 +6,14 @@ use serde_json::{Value, json};
 use crate::engine::{Engine, WindowState, document::DocType};
 
 pub type CommandId = String;
+#[derive(Clone, Debug)]
 pub struct Command {
-    id: CommandId,
-    args: Vec<Value>,
+    pub id: CommandId,
+    pub args: Vec<Value>,
 }
 
 pub struct CommandContext<'a> {
     pub engine: &'a mut Engine,
-    pub window_state: &'a mut WindowState,
 }
 
 type CommandResult = Result<Value, String>;
@@ -24,6 +24,12 @@ pub struct CommandDispatcher {
     pub per_document: HashMap<DocType, HashMap<String, CommandFunction>>,
 }
 impl CommandDispatcher {
+    pub fn new() -> Self {
+        Self {
+            global: HashMap::new(),
+            per_document: HashMap::new(),
+        }
+    }
     pub fn register_global(&mut self, id: &str, func: CommandFunction) {
         self.global.insert(id.to_string(), func);
     }
@@ -39,18 +45,17 @@ impl CommandDispatcher {
         doc_type: DocType,
         ctx: CommandContext,
         cmd: Command,
-        py: Python,
     ) -> CommandResult {
         // 1️⃣ Look for per-document override first
         if let Some(doc_cmds) = self.per_document.get_mut(&doc_type)
             && let Some(func) = doc_cmds.get_mut(&cmd.id)
         {
-            return Self::call_command_func(func, ctx, cmd.args.clone(), py);
+            return Self::call_command_func(func, ctx, cmd.args.clone());
         }
 
         // 2️⃣ Fallback to global
         if let Some(func) = self.global.get_mut(&cmd.id) {
-            return Self::call_command_func(func, ctx, cmd.args.clone(), py);
+            return Self::call_command_func(func, ctx, cmd.args.clone());
         }
 
         Err(format!("Command not found: {}", cmd.id))
@@ -60,7 +65,6 @@ impl CommandDispatcher {
         func: &mut CommandFunction,
         mut ctx: CommandContext,
         args: Vec<Value>,
-        py: Python,
     ) -> CommandResult {
         match func {
             CommandFunction::Rust(f) => f(ctx, args),

@@ -11,14 +11,22 @@ use crossterm::{
 use uuid::Uuid;
 
 use crate::{
-    commands::Key,
+    commands::{
+        Key,
+        command_dispatcher::{Command, CommandDispatcher},
+    },
     config::Config,
     engine::{
         document::{DocId, DocType, Document, DocumentData},
+        documents::{DocumentDataProvider, text::TextDocumentData},
         layout::{LayoutNode, SplitDir},
         popup::{PopupPosition, PopupWindow},
     },
-    input::Operator,
+    input::{
+        self, Operator,
+        input_engine::InputEngine,
+        keymaps::{ActionNode, KeymapProvider},
+    },
     render::Rect,
 };
 
@@ -35,47 +43,32 @@ pub struct Engine {
     pub popups: Option<PopupWindow>,
     pub config: Config,
 
-    pub operator_map: HashMap<Key, Operator>,
-
+    pub keymap: Option<ActionNode>,
     pub should_quit: bool,
 
     subscriptions: HashMap<EngineEventKind, Vec<EngineEventCallback>>,
 }
 impl Engine {
-    pub fn new(config: Config) -> Self {
-        // let doc = parse_csv_to_doc(sheet).expect("Failed To Parse CSV");
-        let doc_id = Uuid::new_v4().to_string();
-        let window_id = Uuid::new_v4().to_string();
+    pub fn new(config: Config, doc: Option<(DocId, Document)>) -> Self {
+        let (doc_id, doc) = match doc {
+            Some(d) => d,
+            None => Document::new(DocumentData::Text(TextDocumentData::new("")), None),
+        };
+        let (win_id, win) = WindowState::new(doc_id.clone());
         Self {
-            events: vec![EngineEvent::WindowCreate(window_id.clone())],
-            windows: HashMap::from([(
-                window_id.clone(),
-                WindowState {
-                    doc_id: doc_id.clone(),
-                    cursor_row: 0,
-                    cursor_col: 0,
-                    scroll_rows: 0,
-                    scroll_cols: 0,
-                },
-            )]),
+            events: vec![EngineEvent::WindowCreate(win_id.clone())],
+            windows: HashMap::from([(win_id.clone(), win)]),
             popups: None,
-            operator_map: HashMap::new(),
+            keymap: None,
             should_quit: false,
-            active_window: window_id.clone(),
+            active_window: win_id.clone(),
             config,
             subscriptions: HashMap::new(),
-            docs: HashMap::from([(
-                doc_id.clone(),
-                Document {
-                    doc_type: DocType::Text,
-                    path: None,
-                    undo_stack: vec![],
-                    data: DocumentData::Text(vec!["".to_string()]),
-                },
-            )]),
-            layout: Some(LayoutNode::Leaf(window_id)),
+            docs: HashMap::from([(doc_id, doc)]),
+            layout: Some(LayoutNode::Leaf(win_id)),
         }
     }
+
     pub fn subscribe(&mut self, event: EngineEventKind, func: EngineEventCallback) {
         self.subscriptions
             .entry(event)
@@ -110,7 +103,7 @@ impl Engine {
             }
         }
     }
-    pub fn process_input(&mut self) -> Result<Option<KeyEvent>, String> {
+    pub fn process_input(&mut self) -> Result<Option<Key>, String> {
         let event = self.await_input()?;
 
         match event {
@@ -138,26 +131,29 @@ impl Engine {
                 Ok(None)
             }
             Event::Key(key_event) => {
-                let normalized = KeyEvent {
-                    code: key_event.code,
-                    modifiers: key_event.modifiers,
-                    state: KeyEventState::empty(),
-                    kind: event::KeyEventKind::Press,
-                };
-                if key_event.kind != event::KeyEventKind::Press {
-                    return Ok(Some(key_event));
-                }
+                let converted = crate::commands::Key::from(key_event);
 
-                let command_name = self.config.keybinds.get(&normalized).cloned();
-
-                let command_fn =
-                    command_name.and_then(|name| self.config.commands.get(&name).cloned());
-
-                if let Some(fun) = command_fn {
-                    fun(self)?;
-                    return Ok(None);
-                }
-                Ok(Some(key_event))
+                Ok(Some(converted))
+                // let normalized = KeyEvent {
+                //     code: key_event.code,
+                //     modifiers: key_event.modifiers,
+                //     state: KeyEventState::empty(),
+                //     kind: event::KeyEventKind::Press,
+                // };
+                // if key_event.kind != event::KeyEventKind::Press {
+                //     return Ok(Some(key_event));
+                // }
+                //
+                // let command_name = self.config.keybinds.get(&normalized).cloned();
+                //
+                // let command_fn =
+                //     command_name.and_then(|name| self.config.commands.get(&name).cloned());
+                //
+                // if let Some(fun) = command_fn {
+                //     fun(self)?;
+                //     return Ok(None);
+                // }
+                // Ok(Some(key_event))
             }
             _ => Ok(None),
         }
@@ -190,7 +186,7 @@ impl Engine {
     }
 
     pub fn create_empty_window(&mut self) -> String {
-        let (doc_id, doc) = Document::new(DocumentData::Text(vec![]), None);
+        let (doc_id, doc) = Document::new(DocumentData::Text(TextDocumentData::new("")), None);
         let (win_id, win) = WindowState::new(doc_id.clone());
         self.windows.insert(win_id.clone(), win);
         self.docs.insert(doc_id.clone(), doc);
@@ -221,25 +217,16 @@ impl Engine {
             return;
         }
         let (doc_id, doc) = Document::new(doc, None);
-        let window_id = Uuid::new_v4().to_string();
+        let (win_id, win) = WindowState::new(doc_id.to_string());
         self.docs.insert(doc_id.clone(), doc);
-        self.windows.insert(
-            window_id.clone(),
-            WindowState {
-                doc_id: doc_id.clone(),
-                cursor_row: 0,
-                cursor_col: 0,
-                scroll_rows: 0,
-                scroll_cols: 0,
-            },
-        );
+        self.windows.insert(win_id.clone(), win);
         if let Some(old_node) = self
             .layout
             .as_mut()
             .and_then(|l| l.find_child(self.active_window.clone()))
         {
             let cloned: LayoutNode = old_node.clone();
-            let new_node = LayoutNode::Leaf(window_id.clone());
+            let new_node = LayoutNode::Leaf(win_id.clone());
             let first: LayoutNode;
             let second: LayoutNode;
             let dir: SplitDir;
@@ -271,8 +258,35 @@ impl Engine {
                 first: Box::new(first),
                 second: Box::new(second),
             };
-            self.events
-                .push(EngineEvent::WindowCreate(window_id.clone()));
+            self.events.push(EngineEvent::WindowCreate(win_id.clone()));
+        }
+    }
+}
+impl KeymapProvider for Engine {
+    fn get_keymap_cache(&self) -> &Option<crate::input::keymaps::ActionNode> {
+        &self.keymap
+    }
+    fn set_keymap_cache(&mut self, value: Option<crate::input::keymaps::ActionNode>) {
+        self.keymap = value;
+    }
+    fn define_keymap(&self) -> crate::input::keymaps::ActionNode {
+        let mut keymap: HashMap<Key, ActionNode> = HashMap::new();
+        keymap.insert(
+            Key {
+                code: crate::commands::KeyCode::Char('q'),
+                modifiers: crate::commands::Modifiers::CTRL,
+            },
+            ActionNode {
+                children: HashMap::new(),
+                action: Some(crate::input::Token::Command(Command {
+                    id: "buffer.close".to_string(),
+                    args: vec![],
+                })),
+            },
+        );
+        ActionNode {
+            children: keymap,
+            action: None,
         }
     }
 }
@@ -323,6 +337,7 @@ pub struct WindowState {
     pub cursor_col: usize,
     pub scroll_rows: usize,
     pub scroll_cols: usize,
+    pub keymap: Option<ActionNode>,
 }
 impl WindowState {
     pub fn new(doc_id: DocId) -> (WindowId, WindowState) {
@@ -330,11 +345,41 @@ impl WindowState {
             Uuid::new_v4().to_string(),
             Self {
                 doc_id,
+                keymap: None,
                 cursor_row: 0,
                 cursor_col: 0,
                 scroll_rows: 0,
                 scroll_cols: 0,
             },
         )
+    }
+}
+
+impl KeymapProvider for WindowState {
+    fn get_keymap_cache(&self) -> &Option<crate::input::keymaps::ActionNode> {
+        &self.keymap
+    }
+    fn set_keymap_cache(&mut self, value: Option<crate::input::keymaps::ActionNode>) {
+        self.keymap = value;
+    }
+    fn define_keymap(&self) -> crate::input::keymaps::ActionNode {
+        let mut keymap: HashMap<Key, ActionNode> = HashMap::new();
+        keymap.insert(
+            Key {
+                code: crate::commands::KeyCode::Char('q'),
+                modifiers: crate::commands::Modifiers::CTRL,
+            },
+            ActionNode {
+                children: HashMap::new(),
+                action: Some(crate::input::Token::Command(Command {
+                    id: "buffer.close".to_string(),
+                    args: vec![],
+                })),
+            },
+        );
+        ActionNode {
+            children: keymap,
+            action: None,
+        }
     }
 }

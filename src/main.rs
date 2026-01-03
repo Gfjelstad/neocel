@@ -3,6 +3,7 @@ use std::{
     env,
     io::{Write, stdout},
     panic,
+    path::PathBuf,
 };
 
 use crossterm::{
@@ -11,20 +12,30 @@ use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
 };
-
-use crate::{
-    commands::globals,
-    config::{Config, parse_keymap},
-    engine::Engine,
-    render::UI,
-};
+use pyo3::Python;
 pub mod commands;
 pub mod config;
 pub mod engine;
 pub mod input;
 pub mod render;
+
+use crate::{
+    commands::{
+        CommandRegistry,
+        command_dispatcher::{CommandContext, CommandDispatcher},
+        globals::{self, DefaultGlobalCommands},
+    },
+    config::{Config, parse_keymap},
+    engine::{Engine, parse::parse_csv_to_doc},
+    input::input_engine::InputEngine,
+    render::UI,
+};
 fn main() -> Result<(), String> {
-    let _args: Vec<String> = env::args().collect();
+    let mut _args: Vec<String> = env::args().collect();
+    if _args.len() == 1 {
+        _args.push(String::new())
+    }
+    _args[1] = "./test.csv".to_string();
     enable_raw_mode().unwrap();
     stdout().execute(Hide).unwrap();
     stdout().execute(EnableMouseCapture).unwrap();
@@ -45,35 +56,52 @@ fn main() -> Result<(), String> {
         .unwrap()
         // 3. Flush the commands to the terminal
         .flush()
-        .unwrap();
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
-fn main_loop(_args: Vec<String>) -> Result<(), String> {
+fn main_loop(args: Vec<String>) -> Result<(), String> {
     let config = setup_config();
     let mut ui = setup_ui(&config);
-    let mut engine = setup_engine(config);
+    let mut input_engine = setup_input_engine(&config);
+    let mut command_dispatcher = setup_command_dispatcher(&config);
+    let mut engine = setup_engine(config, args);
     ui.handle_events(&mut engine);
     ui.draw(&mut engine);
     loop {
         let ran = engine.process_input()?;
+        if let Some(key) = ran
+            && let Some(cmd) = input_engine.feed(key, &mut engine)?
+        {
+            let (_window, doc) = engine.get_current_window();
+            command_dispatcher.dispatch(
+                doc.doc_type.clone(),
+                CommandContext {
+                    engine: &mut engine,
+                },
+                cmd,
+            )?;
+        }
+
         if engine.should_quit {
             break;
         }
-        if let Some(val) = ran {
-            let window_id = engine.active_window.clone(); // copy or clone first
-
-            let window = ui.windows.get_mut(&window_id).unwrap();
-            window.handle_key(val, &mut engine);
-        }
-
         ui.handle_events(&mut engine);
         ui.draw(&mut engine);
     }
     Ok(())
 }
+fn setup_input_engine(_config: &Config) -> InputEngine {
+    let ie = InputEngine::new();
+    ie
+}
+fn setup_command_dispatcher(_config: &Config) -> CommandDispatcher {
+    let mut cmd_disp = CommandDispatcher::new();
 
+    DefaultGlobalCommands::register_commands(&mut cmd_disp).unwrap();
+    cmd_disp
+}
 fn setup_config() -> config::Config {
     let mut config = config::Config {
         settings: HashMap::new(),
@@ -89,6 +117,9 @@ fn setup_config() -> config::Config {
     config
         .styles
         .insert("background".to_string(), "#1D1D1D".to_string());
+    config
+        .styles
+        .insert("background_secondary".to_string(), "#353535".to_string());
     config
         .styles
         .insert("foreground".to_string(), "#F54927".to_string());
@@ -110,8 +141,14 @@ fn setup_config() -> config::Config {
 
     config
 }
-fn setup_engine(config: Config) -> Engine {
-    Engine::new(config)
+fn setup_engine(config: Config, args: Vec<String>) -> Engine {
+    let mut doc = None;
+    if args.len() >= 1 && args[1].contains(".csv") {
+        doc = Some(parse_csv_to_doc(PathBuf::from(args[1].clone())).map_err(|e|println!("{:?}", e.to_string())).unwrap());
+    }
+    let e = Engine::new(config, doc);
+
+    e
 }
 fn setup_ui(config: &Config) -> UI {
     UI::new(config)
