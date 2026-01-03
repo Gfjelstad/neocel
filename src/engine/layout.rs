@@ -1,4 +1,9 @@
-use crate::{engine::WindowId, render::Rect};
+use pyo3::exceptions::asyncio::CancelledError;
+
+use crate::{
+    engine::{SplitDirection, WindowId},
+    render::Rect,
+};
 
 #[derive(Clone)]
 pub enum SplitDir {
@@ -17,6 +22,103 @@ pub enum LayoutNode {
 }
 
 impl LayoutNode {
+    pub fn get_neighbor(&self, win_id: WindowId, dir: SplitDirection) -> Option<WindowId> {
+        let mut candidate: Option<&LayoutNode> = None;
+        let mut next: Option<&LayoutNode> = Some(self);
+
+        while let Some(item) = next {
+            match item {
+                LayoutNode::Leaf(id) => {
+                    break;
+                }
+                Self::Split {
+                    direction,
+                    ratio,
+                    first,
+                    second,
+                } => {
+                    match dir {
+                        SplitDirection::Up => {
+                            if matches!(direction, SplitDir::Vert) && second.contains(&win_id) {
+                                candidate = Some(first);
+                                next = Some(second);
+                            } else {
+                                next = None;
+                            }
+                        }
+                        SplitDirection::Down => {
+                            if matches!(direction, SplitDir::Vert) && first.contains(&win_id) {
+                                candidate = Some(second);
+                                next = Some(first)
+                            } else {
+                                next = None;
+                            }
+                        }
+                        SplitDirection::Left => {
+                            if matches!(direction, SplitDir::Horz) && second.contains(&win_id) {
+                                candidate = Some(first);
+                                next = Some(second);
+                            } else {
+                                next = None;
+                            }
+                        }
+                        SplitDirection::Right => {
+                            if matches!(direction, SplitDir::Vert) && first.contains(&win_id) {
+                                candidate = Some(second);
+                                next = Some(first);
+                            } else {
+                                next = None;
+                            }
+                        }
+                    };
+                }
+            };
+        }
+
+        while let Some(item) = candidate {
+            match item {
+                LayoutNode::Leaf(id) => {
+                    // found the neighbor
+                    return Some(id.clone());
+                }
+
+                LayoutNode::Split {
+                    direction,
+                    first,
+                    second,
+                    ..
+                } => {
+                    candidate = match dir {
+                        SplitDirection::Up => {
+                            if matches!(direction, SplitDir::Vert) {
+                                Some(second.as_ref())
+                            } else {
+                                Some(first.as_ref())
+                            }
+                        }
+                        SplitDirection::Down => Some(first.as_ref()),
+                        SplitDirection::Left => {
+                            if matches!(direction, SplitDir::Vert) {
+                                Some(second.as_ref())
+                            } else {
+                                Some(first.as_ref())
+                            }
+                        }
+                        SplitDirection::Right => Some(first.as_ref()),
+                    };
+                }
+            }
+        }
+        None
+    }
+    fn contains(&self, target: &WindowId) -> bool {
+        match self {
+            LayoutNode::Leaf(id) => id == target,
+            LayoutNode::Split { first, second, .. } => {
+                first.contains(target) || second.contains(target)
+            }
+        }
+    }
     pub fn remove_window(self, target: &WindowId) -> Option<LayoutNode> {
         match self {
             LayoutNode::Leaf(id) => {

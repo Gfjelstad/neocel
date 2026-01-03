@@ -11,15 +11,18 @@ pub struct InfoWindow {
 impl Window for InfoWindow {
     fn draw(&self, rect: &Rect, engine: &mut Engine, buffer: &mut ScreenBuffer) {
         // Draw border; focused if this window is active
+        let fg = engine.config.get_style_color("foreground", None);
+        let bg = engine.config.get_style_color("background", None);
+        let (win, doc) = engine.get_window(&self.window_id);
         let inner_rect = draw_border(
             &self.window_id,
             rect,
             buffer,
-            self.window_id == engine.active_window,
+            self.window_id == win.id,
+            win.border_style,
         );
 
         // Get the document (string)
-        let doc = &engine.docs[&engine.windows[&self.window_id].doc_id];
 
         let content = match &doc.data {
             DocumentData::Text(data) => data.data.join("\n"), // if you stored TextDocument as Vec<String>
@@ -60,8 +63,8 @@ impl Window for InfoWindow {
                 let buffer_col = col + inner_rect.x as usize;
                 let cell = &mut buffer.cells[buffer_row][buffer_col];
                 cell.ch = ' ';
-                cell.fg = engine.config.get_style_color("foreground", None);
-                cell.bg = engine.config.get_style_color("background", None);
+                cell.fg = fg;
+                cell.bg = bg;
                 cell.attrs.clear();
             }
         }
@@ -80,8 +83,8 @@ impl Window for InfoWindow {
                 let buffer_col = col + inner_rect.x as usize;
                 let cell = &mut buffer.cells[buffer_row][buffer_col];
                 cell.ch = ch;
-                cell.fg = engine.config.get_style_color("foreground", None);
-                cell.bg = engine.config.get_style_color("background", None);
+                cell.fg = fg;
+                cell.bg = bg;
                 cell.attrs.clear();
             }
         }

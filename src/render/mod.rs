@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::{
     config::Config,
-    engine::{Engine, EngineEvent, WindowId, layout::LayoutNode},
+    engine::{Engine, EngineEvent, WindowId, layout::LayoutNode, popup::RelativeTo},
     render::{
         screen_buffer::ScreenBuffer,
         windows::{info::InfoWindow, table::TableWindow, text::TextWindow},
@@ -52,11 +52,42 @@ impl UI {
         self.screen_buffer.flush();
     }
 
-    pub fn draw_popups(&mut self, engine: &mut Engine, rect: &Rect) {
-        if let Some(mut popup) = engine.popups.clone() {
-            let popup_rect = popup.get_rect(rect);
+    pub fn draw_popups(&mut self, engine: &mut Engine, rect: &Rect) -> Result<(), String> {
+        let layout = engine.layout.as_ref().ok_or("Engine layout not found")?;
+        let wins: HashMap<String, Rect> = layout.get_rects(rect).into_iter().collect();
+
+        if let Some(popup) = &mut engine.popups.clone() {
+            let relative_to = popup.relative_to.clone();
+
+            let rect = match relative_to {
+                RelativeTo::Editor => Ok(Rect {
+                    width: popup.width,
+                    height: popup.height,
+                    x: 0,
+                    y: 0,
+                }),
+                RelativeTo::Win(win_id) => wins
+                    .get(&win_id)
+                    .cloned()
+                    .ok_or_else(|| "window not found".to_string()),
+                RelativeTo::Cursor => {
+                    let win = engine.get_current_window().0;
+                    wins.get(&win.id)
+                        .map(|curr_win| Rect {
+                            width: popup.width,
+                            height: popup.height,
+                            x: curr_win.x + win.cursor_col,
+                            y: curr_win.y + win.cursor_row,
+                        })
+                        .ok_or_else(|| "failed to get cursor position".to_string())
+                }
+            }?;
+
+            let popup_rect = popup.get_rect(&rect)?;
             self.draw_layout_node(engine, &popup_rect, &popup.layout);
         }
+
+        Ok(())
     }
     pub fn draw_layout_node(&mut self, engine: &mut Engine, rect: &Rect, node: &LayoutNode) {
         let node_rects = node.get_rects(rect);

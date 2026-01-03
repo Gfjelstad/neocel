@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use pyo3::prelude::*;
 use serde_json::{Value, json};
 
-use crate::engine::{Engine, WindowState, document::DocType};
+use crate::{
+    api::APICaller,
+    engine::{Engine, WindowState, document::DocType},
+};
 
 pub type CommandId = String;
 #[derive(Clone, Debug)]
@@ -13,7 +16,7 @@ pub struct Command {
 }
 
 pub struct CommandContext<'a> {
-    pub engine: &'a mut Engine,
+    pub api: APICaller<'a>,
 }
 
 type CommandResult = Result<Value, String>;
@@ -42,9 +45,9 @@ impl CommandDispatcher {
     }
     pub fn dispatch(
         &mut self,
-        doc_type: DocType,
+        doc_type: &DocType,
         ctx: CommandContext,
-        cmd: Command,
+        cmd: &Command,
     ) -> CommandResult {
         // 1️⃣ Look for per-document override first
         if let Some(doc_cmds) = self.per_document.get_mut(&doc_type)

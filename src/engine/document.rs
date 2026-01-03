@@ -27,6 +27,7 @@ pub enum DocType {
 }
 #[derive(Serialize)]
 pub struct Document {
+    pub id: DocId,
     pub doc_type: DocType,
     pub path: Option<PathBuf>,
     pub data: DocumentData,
@@ -43,9 +44,11 @@ impl Document {
             DocumentData::Help(_) => DocType::Info,
             _ => DocType::Info,
         };
+        let id = Uuid::new_v4().to_string();
         (
-            Uuid::new_v4().to_string(),
+            id.clone(),
             Self {
+                id,
                 doc_type: doc_type.clone(),
                 path,
                 keymap: None,

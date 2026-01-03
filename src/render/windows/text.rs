@@ -12,20 +12,14 @@ pub struct TextWindow {
 impl Window for TextWindow {
     fn draw(&self, rect: &Rect, engine: &mut Engine, buffer: &mut ScreenBuffer) {
         // Draw the border first
-
+        let bg = engine.config.get_style_color("background", None);
+        let fg = engine.config.get_style_color("foreground", None);
         // Get window state and document
-        let window = &engine.windows[&self.window_id];
-        let doc = &engine.docs[&window.doc_id];
-        let rect = draw_border(
-            &self.window_id,
-            rect,
-            buffer,
-            self.window_id == engine.active_window.clone(),
-        );
+        let (window, doc) = engine.get_window(&self.window_id);
+        let focussed = self.window_id == window.id;
+        let rect = draw_border(&self.window_id, rect, buffer, focussed, window.border_style);
 
         if let DocumentData::Text(lines) = &doc.data {
-            let bg = engine.config.get_style_color("background", None);
-            let fg = engine.config.get_style_color("foreground", None);
             let cursor_row = window.cursor_row; // for border
             let cursor_col = window.cursor_col;
 
@@ -49,10 +43,7 @@ impl Window for TextWindow {
                     }
 
                     // Cursor highlight
-                    if row == cursor_row
-                        && col_idx == rect.x as usize + cursor_col
-                        && self.window_id == engine.active_window
-                    {
+                    if row == cursor_row && col_idx == rect.x as usize + cursor_col && focussed {
                         std::mem::swap(&mut cell.bg, &mut cell.fg);
                     }
                 }

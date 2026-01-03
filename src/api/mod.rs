@@ -14,7 +14,7 @@ pub struct APIMethodParams<'a> {
     input_engine: &'a mut InputEngine,
     ui: &'a mut UI,
     command_dispatch: &'a mut CommandDispatcher,
-    params: &'a mut Value,
+    params: Value,
 }
 pub type APIMethodResult = Result<Option<Value>, String>;
 pub type APIMethod = for<'a, 'b> fn(&'b mut APIMethodParams<'a>) -> APIMethodResult;
@@ -22,6 +22,8 @@ pub struct API {
     commands: HashMap<String, APIMethod>,
     queue: Vec<(String, Value)>,
 }
+
+pub type APICaller<'a> = &'a mut dyn FnOnce(String, Value) -> Result<Option<Value>, String>;
 
 impl API {
     pub fn new() -> Self {
@@ -51,7 +53,7 @@ impl API {
         mut callback: F,
     ) -> Result<(), String>
     where
-        F: FnMut(&mut dyn FnOnce(String, Value) -> Result<Option<Value>, String>),
+        F: FnMut(APICaller),
     {
         // define the callable function that executes commands
         let mut callable =
@@ -63,7 +65,7 @@ impl API {
                         input_engine,
                         ui,
                         command_dispatch,
-                        params: &mut params,
+                        params: params,
                     };
                     func(&mut tuple_args)
                 } else {

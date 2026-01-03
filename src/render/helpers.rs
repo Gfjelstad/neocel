@@ -1,13 +1,41 @@
 use crossterm::style::Attribute;
+use serde::{Deserialize, Serialize};
 
 use crate::render::{Rect, screen_buffer::ScreenBuffer};
 
-pub fn draw_border(win_id: &String, rect: &Rect, buffer: &mut ScreenBuffer, focused: bool) -> Rect {
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum BorderStyle {
+    Single,
+    Double,
+    Rounded,
+    Shadow,
+    None,
+}
+
+fn border_chars(style: BorderStyle) -> (char, char, char, char, char, char) {
+    match style {
+        BorderStyle::Single => ('─', '│', '┌', '┐', '└', '┘'),
+        BorderStyle::Double => ('═', '║', '╔', '╗', '╚', '╝'),
+        BorderStyle::Rounded => ('─', '│', '╭', '╮', '╰', '╯'),
+        BorderStyle::Shadow => (' ', ' ', ' ', ' ', ' ', ' '), // Shadows are usually spaces
+        BorderStyle::None => (' ', ' ', ' ', ' ', ' ', ' '),   // No border
+    }
+}
+pub fn draw_border(
+    win_id: &String,
+    rect: &Rect,
+    buffer: &mut ScreenBuffer,
+    focused: bool,
+    style: Option<BorderStyle>,
+) -> Rect {
+    let style = style.unwrap_or(BorderStyle::Single);
     // Decide which characters to use
-    let (h_line, v_line, tl, tr, bl, br) = if focused {
-        ('═', '║', '╔', '╗', '╚', '╝')
+    let (h_line, v_line, tl, tr, bl, br) = border_chars(style);
+    let attrs = if focused {
+        vec![Attribute::Bold]
     } else {
-        ('─', '│', '┌', '┐', '└', '┘')
+        vec![]
     };
 
     // Top and bottom horizontal lines
@@ -18,14 +46,14 @@ pub fn draw_border(win_id: &String, rect: &Rect, buffer: &mut ScreenBuffer, focu
 
         if x >= 4 && x < 4 + win_id.len() {
             buffer.cells[y_top][x].ch = win_id.chars().nth(x - 4).unwrap_or(' ');
-            buffer.cells[y_top][x].attrs.push(Attribute::Bold);
+            buffer.cells[y_top][x].attrs = attrs.clone();
         } else {
             buffer.cells[y_top][x].ch = h_line;
-            buffer.cells[y_top][x].attrs.push(Attribute::Bold);
+            buffer.cells[y_top][x].attrs = attrs.clone();
         }
 
         buffer.cells[y_bot][x].ch = h_line;
-        buffer.cells[y_bot][x].attrs.push(Attribute::Bold);
+        buffer.cells[y_bot][x].attrs = attrs.clone();
     }
 
     // Left and right vertical lines
@@ -35,10 +63,10 @@ pub fn draw_border(win_id: &String, rect: &Rect, buffer: &mut ScreenBuffer, focu
         let x_right = rect.x + rect.width - 1;
 
         buffer.cells[y][x_left].ch = v_line;
-        buffer.cells[y][x_left].attrs.push(Attribute::Bold);
+        buffer.cells[y][x_left].attrs = attrs.clone();
 
         buffer.cells[y][x_right].ch = v_line;
-        buffer.cells[y][x_right].attrs.push(Attribute::Bold);
+        buffer.cells[y][x_right].attrs = attrs.clone();
     }
 
     // Corners
@@ -48,16 +76,16 @@ pub fn draw_border(win_id: &String, rect: &Rect, buffer: &mut ScreenBuffer, focu
     let b = rect.y + rect.height - 1;
 
     buffer.cells[t][l].ch = tl;
-    buffer.cells[t][l].attrs.push(Attribute::Bold);
+    buffer.cells[t][l].attrs = attrs.clone();
 
     buffer.cells[t][r].ch = tr;
-    buffer.cells[t][r].attrs.push(Attribute::Bold);
+    buffer.cells[t][r].attrs = attrs.clone();
 
     buffer.cells[b][l].ch = bl;
-    buffer.cells[b][l].attrs.push(Attribute::Bold);
+    buffer.cells[b][l].attrs = attrs.clone();
 
     buffer.cells[b][r].ch = br;
-    buffer.cells[b][r].attrs.push(Attribute::Bold);
+    buffer.cells[b][r].attrs = attrs.clone();
 
     // Return inner rect (inside border)
     Rect {

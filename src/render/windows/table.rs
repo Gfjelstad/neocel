@@ -16,14 +16,26 @@ pub struct TableWindow {
 }
 impl Window for TableWindow {
     fn draw(&self, rect: &Rect, engine: &mut Engine, buffer: &mut ScreenBuffer) {
+        let bg = hex_to_color(engine.config.styles.get("foreground").unwrap().as_str()).unwrap();
+        let fg = hex_to_color(engine.config.styles.get("background").unwrap().as_str()).unwrap();
+        let bg_secondary = hex_to_color(
+            engine
+                .config
+                .styles
+                .get("background_secondary")
+                .unwrap()
+                .as_str(),
+        )
+        .unwrap();
+        let (win, doc) = engine.get_window(&self.window_id);
         let mut rect = draw_border(
             &self.window_id,
             rect,
             buffer,
-            self.window_id == engine.active_window.clone(),
+            self.window_id == win.id,
+            win.border_style,
         );
 
-        let doc = &engine.docs[&engine.windows[&self.window_id].doc_id];
         if let DocumentData::SpreadSheet(data) = &doc.data {
             let max_rows = data.cells.keys().max().copied().unwrap_or(0);
             let max_cols = data
@@ -42,19 +54,7 @@ impl Window for TableWindow {
                     .unwrap_or(3);
                 col_widths.insert(col, vec![10, max_width + 4].into_iter().max().unwrap());
             }
-            let bg =
-                hex_to_color(engine.config.styles.get("background").unwrap().as_str()).unwrap();
-            let fg =
-                hex_to_color(engine.config.styles.get("foreground").unwrap().as_str()).unwrap();
-            let bg_secondary = hex_to_color(
-                engine
-                    .config
-                    .styles
-                    .get("background_secondary")
-                    .unwrap()
-                    .as_str(),
-            )
-            .unwrap();
+
             // render col ids
             let mut loc: usize = rect.x;
 

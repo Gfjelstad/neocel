@@ -21,10 +21,11 @@ pub mod input;
 pub mod render;
 
 use crate::{
+    api::API,
     commands::{
         CommandRegistry,
         command_dispatcher::{CommandContext, CommandDispatcher},
-        globals::{self, DefaultGlobalCommands},
+        globals::{self},
     },
     config::{Config, parse_keymap},
     engine::{Engine, parse::parse_csv_to_doc},
@@ -72,6 +73,7 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
     let mut input_engine = setup_input_engine(&config);
     let mut command_dispatcher = setup_command_dispatcher(&config);
     let mut engine = setup_engine(config, args);
+    let mut api = API::new();
     ui.handle_events(&mut engine);
     ui.draw(&mut engine);
     loop {
@@ -79,14 +81,19 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
         if let Some(key) = ran
             && let Some(cmd) = input_engine.feed(key, &mut engine)?
         {
-            let (_window, doc) = engine.get_current_window();
-            command_dispatcher.dispatch(
-                doc.doc_type.clone(),
-                CommandContext {
-                    engine: &mut engine,
+            api.runcommand(
+                &mut engine,
+                &mut input_engine,
+                &mut ui,
+                &mut command_dispatcher,
+                |api| {
+                    let res = command_dispatcher.dispatch(
+                        &engine::document::DocType::SpreadSheet,
+                        CommandContext { api: api },
+                        &cmd,
+                    );
                 },
-                cmd,
-            )?;
+            );
         }
 
         if engine.should_quit {
@@ -102,9 +109,9 @@ fn setup_input_engine(_config: &Config) -> InputEngine {
     ie
 }
 fn setup_command_dispatcher(_config: &Config) -> CommandDispatcher {
-    let mut cmd_disp = CommandDispatcher::new();
+    let cmd_disp = CommandDispatcher::new();
 
-    DefaultGlobalCommands::register_commands(&mut cmd_disp).unwrap();
+    // DefaultGlobalCommands::register_commands(&mut cmd_disp).unwrap();
     cmd_disp
 }
 fn setup_config() -> config::Config {

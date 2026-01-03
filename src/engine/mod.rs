@@ -8,7 +8,7 @@ use crossterm::{
     event::{self, Event, KeyEvent, KeyEventState},
     terminal,
 };
-use serde::{self, Serialize};
+use serde::{self, Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
@@ -28,7 +28,7 @@ use crate::{
         input_engine::InputEngine,
         keymaps::{ActionNode, KeymapProvider},
     },
-    render::Rect,
+    render::{Rect, helpers::BorderStyle},
 };
 
 pub type EngineEventCallback = Box<dyn FnMut(&mut Engine, &EngineEvent)>;
@@ -86,12 +86,15 @@ impl Engine {
         self.subscriptions.insert(kind, subs);
         self.events.push(event.clone());
     }
+    pub fn get_window(&mut self, win_id: &WindowId) -> (&mut WindowState, &mut Document) {
+        let win = self.windows.get_mut(win_id).unwrap();
+        let doc = self.docs.get_mut(&win.doc_id.clone()).unwrap();
+        (win, doc)
+    }
 
     pub fn get_current_window(&mut self) -> (&mut WindowState, &mut Document) {
         let win_id = self.active_window.clone();
-        let win = self.windows.get_mut(&win_id).unwrap();
-        let doc = self.docs.get_mut(&win.doc_id.clone()).unwrap();
-        (win, doc)
+        self.get_window(&win_id)
     }
     pub fn await_input(&mut self) -> Result<Event, String> {
         loop {
@@ -160,7 +163,10 @@ impl Engine {
             position: pos,
             width,
             height,
+            relative_to: popup::RelativeTo::Editor,
             layout: LayoutNode::Leaf(win_id.clone()),
+            row: None,
+            col: None,
         });
         self.events.push(EngineEvent::WindowCreate(win_id.clone()));
         Ok((win_id, doc_id))
@@ -271,7 +277,8 @@ impl KeymapProvider for Engine {
         }
     }
 }
-
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SplitDirection {
     Up,
     Down,
@@ -314,25 +321,30 @@ pub struct Edit {}
 pub type WindowId = String;
 #[derive(Serialize, Debug)]
 pub struct WindowState {
+    pub id: WindowId,
     pub doc_id: DocId,
     pub cursor_row: usize,
     pub cursor_col: usize,
     pub scroll_rows: usize,
     pub scroll_cols: usize,
+    pub border_style: Option<BorderStyle>,
     #[serde(skip)]
     pub keymap: Option<ActionNode>,
 }
 impl WindowState {
     pub fn new(doc_id: DocId) -> (WindowId, WindowState) {
+        let id = Uuid::new_v4().to_string();
         (
-            Uuid::new_v4().to_string(),
+            id.clone(),
             Self {
+                id,
                 doc_id,
                 keymap: None,
                 cursor_row: 0,
                 cursor_col: 0,
                 scroll_rows: 0,
                 scroll_cols: 0,
+                border_style: None,
             },
         )
     }
