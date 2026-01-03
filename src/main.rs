@@ -13,6 +13,7 @@ use crossterm::{
     terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
 };
 use pyo3::Python;
+pub mod api;
 pub mod commands;
 pub mod config;
 pub mod engine;
