@@ -13,29 +13,23 @@ pub struct APIMethodParams<'a> {
     engine: &'a mut Engine,
     input_engine: &'a mut InputEngine,
     ui: &'a mut UI,
-    command_dispatch: &'a mut CommandDispatcher,
+    // command_dispatch: &'a mut CommandDispatcher,
     params: Value,
 }
 pub type APIMethodResult = Result<Option<Value>, String>;
 pub type APIMethod = for<'a, 'b> fn(&'b mut APIMethodParams<'a>) -> APIMethodResult;
 pub struct API {
     commands: HashMap<String, APIMethod>,
-    queue: Vec<(String, Value)>,
 }
 
-pub type APICaller<'a> = &'a mut dyn FnOnce(String, Value) -> Result<Option<Value>, String>;
+pub type APICaller<'a> = &'a mut dyn FnMut(String, Value) -> Result<Option<Value>, String>;
 
 impl API {
     pub fn new() -> Self {
         Self {
             commands: HashMap::new(),
-            queue: vec![],
         }
     }
-    pub fn queue(&mut self, method: &str, params: Value) {
-        self.queue.push((method.to_string(), params));
-    }
-
     pub fn register_api(&mut self, methods: HashMap<&str, APIMethod>) {
         let mut t: HashMap<String, APIMethod> = methods
             .into_iter()
@@ -44,12 +38,12 @@ impl API {
         self.commands.extend(t);
     }
 
-    pub fn runcommand<F>(
+    pub fn run_command<F>(
         &mut self,
         engine: &mut Engine,
         input_engine: &mut InputEngine,
         ui: &mut UI,
-        command_dispatch: &mut CommandDispatcher,
+        // command_dispatch: &mut CommandDispatcher,
         mut callback: F,
     ) -> Result<(), String>
     where
@@ -64,11 +58,12 @@ impl API {
                         engine,
                         input_engine,
                         ui,
-                        command_dispatch,
+                        // command_dispatch,
                         params: params,
                     };
                     func(&mut tuple_args)
                 } else {
+                    println!("could not find command");
                     Ok(None)
                 }
             };
@@ -86,6 +81,6 @@ impl Default for API {
     }
 }
 
-trait APIRegister {
-    fn register_methods(&mut self, api: &mut API);
+pub trait APIRegister {
+    fn register_methods(api: &mut API);
 }

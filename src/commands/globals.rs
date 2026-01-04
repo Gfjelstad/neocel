@@ -1,3 +1,7 @@
+use serde_json::{Value, json};
+
+use crate::commands::command_dispatcher::CommandContext;
+
 // use crate::{
 //     commands::command_dispatcher::CommandContext,
 //     engine::{Engine, EngineEvent, document::DocumentData, popup::PopupPosition},
@@ -10,11 +14,12 @@
 //     Ok(())
 // }
 //
-// pub fn kill(engine: &mut Engine) -> Result<(), String> {
-//     // engine.should_quit = true; // or however you exit
-//     engine.should_quit = true;
-//     Ok(())
-// }
+pub fn kill(neo: &mut CommandContext, _params: Vec<Value>) -> Result<Value, String> {
+    // engine.should_quit = true; // or however you exit
+    println!("should kill");
+    neo.call("kill".to_string(), json!({}));
+    Ok(json!({}))
+}
 //
 // pub fn split_scratch_down(engine: &mut Engine) -> Result<(), String> {
 //     let data = crate::engine::document::DocumentData::Text(vec!["".to_string()]);

@@ -271,6 +271,19 @@ impl KeymapProvider for Engine {
                 })),
             },
         );
+        keymap.insert(
+            Key {
+                code: crate::commands::KeyCode::Char('c'),
+                modifiers: crate::commands::Modifiers::CTRL,
+            },
+            ActionNode {
+                children: HashMap::new(),
+                action: Some(crate::input::Token::Command(Command {
+                    id: "kill".to_string(),
+                    args: vec![],
+                })),
+            },
+        );
         ActionNode {
             children: keymap,
             action: None,

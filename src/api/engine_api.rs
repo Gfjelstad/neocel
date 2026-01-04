@@ -179,16 +179,22 @@ impl EngineAPI {
         }
         Err("No Valid Layout".to_string())
     }
+    pub fn kill(state: &mut APIMethodParams) -> APIMethodResult {
+        println!("quit?");
+        state.engine.should_quit = true;
+        Ok(None)
+    }
 }
 
 impl APIRegister for EngineAPI {
-    fn register_methods(&mut self, api: &mut super::API) {
+    fn register_methods(api: &mut super::API) {
         let mut methods: HashMap<&str, APIMethod> = HashMap::new();
         methods.insert("window.create", Self::create_window);
         methods.insert("window.get_current", Self::get_current_window);
         methods.insert("window.get_window", Self::get_window);
         methods.insert("window.close", Self::close_window);
         methods.insert("window.move", Self::move_window);
+        methods.insert("kill", Self::kill);
         api.register_api(methods);
     }
 }
