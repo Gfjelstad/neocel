@@ -34,9 +34,10 @@ type CommandFn = dyn FnMut(&mut CommandContext, Vec<Value>) -> CommandResult;
 pub struct CommandDispatcher {
     pub global: HashMap<String, CommandFunction>,
     pub per_document: HashMap<DocType, HashMap<String, CommandFunction>>,
-    queue: Vec<QueuedCommand>,
+    queue: CommandDispatchQueue,
 }
-pub enum QueuedCommand {
+pub type CommandDispatchQueue = Vec<CommandDispatchQueueItem>;
+pub enum CommandDispatchQueueItem {
     Global(String, Vec<Value>),
     Doc(DocType, String, Vec<Value>),
     RegisterGlobal(String, CommandFunction),
@@ -61,12 +62,12 @@ impl CommandDispatcher {
             .insert(id.to_string(), func);
     }
 
-    pub fn dispatch_2(&mut self, doc_type: &DocType, cmd: &Command) -> Result<(), String> {
+    pub fn dispatch(&mut self, doc_type: &DocType, cmd: &Command) -> Result<(), String> {
         // 1️⃣ Look for per-document override first
         if let Some(doc_cmds) = self.per_document.get_mut(&doc_type)
             && let Some(func) = doc_cmds.get(&cmd.id)
         {
-            self.queue.push(QueuedCommand::Doc(
+            self.queue.push(CommandDispatchQueueItem::Doc(
                 doc_type.clone(),
                 cmd.id.clone(),
                 cmd.args.clone(),
@@ -77,8 +78,10 @@ impl CommandDispatcher {
         // 2️⃣ Fallback to global
         if self.global.contains_key(&cmd.id) {
             // return Self::call_command_func(func, ctx, cmd.args.clone());
-            self.queue
-                .push(QueuedCommand::Global(cmd.id.clone(), cmd.args.clone()));
+            self.queue.push(CommandDispatchQueueItem::Global(
+                cmd.id.clone(),
+                cmd.args.clone(),
+            ));
             return Ok(());
         }
 
@@ -123,7 +126,7 @@ impl CommandDispatcher {
         }
     }
 
-    fn flush_queue(
+    pub fn flush_queue(
         &mut self,
         engine: &mut Engine,
         input_engine: &mut InputEngine,
@@ -131,28 +134,28 @@ impl CommandDispatcher {
         api: &mut API,
     ) -> Result<(), String> {
         let mut queue = Some(std::mem::take(&mut self.queue));
-        let mut new_queue: Vec<QueuedCommand> = vec![];
-        api.run_command(engine, input_engine, ui, |caller| {
+        let mut new_queue: CommandDispatchQueue = vec![];
+        _ = api.run_command(engine, input_engine, ui, &mut new_queue, |caller| {
             let mut ctx = CommandContext { fp: caller };
             let queue = queue.take().expect("run_command called multiple times");
             for queued in queue {
                 match queued {
-                    QueuedCommand::Global(id, args) => {
+                    CommandDispatchQueueItem::Global(id, args) => {
                         if let Some(func) = self.global.get_mut(&id) {
                             _ = Self::call_command_func(func, &mut ctx, args);
                         }
                     }
-                    QueuedCommand::Doc(doc_type, id, args) => {
+                    CommandDispatchQueueItem::Doc(doc_type, id, args) => {
                         if let Some(doc_fns) = self.per_document.get_mut(&doc_type)
                             && let Some(func) = doc_fns.get_mut(&id)
                         {
                             _ = Self::call_command_func(func, &mut ctx, args);
                         }
                     }
-                    QueuedCommand::RegisterGlobal(id, command_function) => {
+                    CommandDispatchQueueItem::RegisterGlobal(id, command_function) => {
                         self.global.insert(id, command_function);
                     }
-                    QueuedCommand::RegisterDoc(doc_type, id, command_function) => {
+                    CommandDispatchQueueItem::RegisterDoc(doc_type, id, command_function) => {
                         self.register_for_doc(doc_type, id.as_str(), command_function)
                     }
                 }

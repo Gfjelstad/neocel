@@ -5,15 +5,17 @@ use std::collections::HashMap;
 use serde_json::{Value, to_string};
 
 use crate::{
-    commands::command_dispatcher::CommandDispatcher, engine::Engine,
-    input::input_engine::InputEngine, render::UI,
+    commands::command_dispatcher::{CommandDispatchQueue, CommandDispatcher},
+    engine::Engine,
+    input::input_engine::InputEngine,
+    render::UI,
 };
 
 pub struct APIMethodParams<'a> {
     engine: &'a mut Engine,
     input_engine: &'a mut InputEngine,
     ui: &'a mut UI,
-    // command_dispatch: &'a mut CommandDispatcher,
+    command_dispatch: &'a mut CommandDispatchQueue,
     params: Value,
 }
 pub type APIMethodResult = Result<Option<Value>, String>;
@@ -43,7 +45,7 @@ impl API {
         engine: &mut Engine,
         input_engine: &mut InputEngine,
         ui: &mut UI,
-        // command_dispatch: &mut CommandDispatcher,
+        command_dispatch: &mut CommandDispatchQueue,
         mut callback: F,
     ) -> Result<(), String>
     where
@@ -58,7 +60,7 @@ impl API {
                         engine,
                         input_engine,
                         ui,
-                        // command_dispatch,
+                        command_dispatch,
                         params: params,
                     };
                     func(&mut tuple_args)

@@ -42,9 +42,7 @@ fn main() -> Result<(), String> {
     stdout().execute(Hide).unwrap();
     stdout().execute(EnableMouseCapture).unwrap();
 
-    // let res = panic::catch_unwind(|| {
     let res = main_loop(_args);
-    // });
 
     stdout().execute(DisableMouseCapture).unwrap();
     stdout().execute(Show).unwrap();
@@ -57,10 +55,8 @@ fn main() -> Result<(), String> {
     stdout()
         .queue(Clear(ClearType::All))
         .unwrap()
-        // 2. Move the cursor to the top-left position (column 0, row 0)
         .queue(cursor::MoveTo(0, 0))
         .unwrap()
-        // 3. Flush the commands to the terminal
         .flush()
         .map_err(|e| e.to_string())?;
 
@@ -76,28 +72,17 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
     let mut api = setup_api();
     ui.handle_events(&mut engine);
     ui.draw(&mut engine);
+    _ = command_dispatcher.flush_queue(&mut engine, &mut input_engine, &mut ui, &mut api); // run
+    // initial commands before awaiting an input;
     loop {
         let ran = engine.process_input()?;
         if let Some(key) = ran
             && let Some(cmd) = input_engine.feed(key, &mut engine)?
         {
             let (_, doc) = engine.get_current_window();
-            _ = command_dispatcher.dispatch_2(&doc.doc_type, &cmd);
-            // _ = api.run_command(
-            //     &mut engine,
-            //     &mut input_engine,
-            //     &mut ui,
-            //     // &mut command_dispatcher,
-            //     |api_caller| {
-            //         let res = command_dispatcher.dispatch(
-            //             &engine::document::DocType::SpreadSheet,
-            //             &mut CommandContext { fp: api_caller },
-            //             &cmd,
-            //         );
-            //     },
-            // );
+            _ = command_dispatcher.dispatch(&doc.doc_type, &cmd);
         }
-
+        _ = command_dispatcher.flush_queue(&mut engine, &mut input_engine, &mut ui, &mut api);
         if engine.should_quit {
             break;
         }
@@ -162,16 +147,14 @@ fn setup_config() -> config::Config {
 }
 fn setup_engine(config: Config, args: Vec<String>) -> Engine {
     let mut doc = None;
-    if args.len() >= 1 && args[1].contains(".csv") {
+    if !args.is_empty() && args[1].contains(".csv") {
         doc = Some(
             parse_csv_to_doc(PathBuf::from(args[1].clone()))
                 .map_err(|e| println!("{:?}", e.to_string()))
                 .unwrap(),
         );
     }
-    let e = Engine::new(config, doc);
-
-    e
+    Engine::new(config, doc)
 }
 fn setup_ui(config: &Config) -> UI {
     UI::new(config)
