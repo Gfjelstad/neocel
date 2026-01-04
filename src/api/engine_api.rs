@@ -136,7 +136,7 @@ impl EngineAPI {
     }
     pub fn get_current_window(state: &mut APIMethodParams) -> APIMethodResult {
         let win_id = state.engine.active_window.clone();
-        state.params = json!({"win_id": win_id});
+        state.params = Some(json!({"win_id": win_id}));
         Self::get_window(state)
     }
     pub fn get_window(state: &mut APIMethodParams) -> APIMethodResult {

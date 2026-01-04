@@ -75,8 +75,7 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
     _ = command_dispatcher.flush_queue(&mut engine, &mut input_engine, &mut ui, &mut api); // run
     // initial commands before awaiting an input;
     loop {
-        let ran = engine.process_input()?;
-        if let Some(key) = ran
+        if let Some(key) = engine.process_input()?
             && let Some(cmd) = input_engine.feed(key, &mut engine)?
         {
             let (_, doc) = engine.get_current_window();
@@ -97,24 +96,17 @@ fn setup_api() -> API {
     api
 }
 fn setup_input_engine(_config: &Config) -> InputEngine {
-    let ie = InputEngine::new();
-    ie
+    InputEngine::new()
 }
 fn setup_command_dispatcher(_config: &Config) -> CommandDispatcher {
     let mut cmd_disp = CommandDispatcher::new();
-    cmd_disp.register_global("kill", CommandFunction::Rust(Box::new(globals::kill)));
+    cmd_disp.register_global("kill", CommandFunction::Internal("kill".to_string(), None));
     cmd_disp
 }
 fn setup_config() -> config::Config {
     let mut config = config::Config {
         settings: HashMap::new(),
         keybinds: HashMap::new(),
-        // keybinds: parse_keymap(&HashMap::from([
-        //     ("C-f".to_string(), "kill".to_string()),
-        //     ("C-S-down".to_string(), "split-scratch-down".to_string()),
-        //     ("C-h".to_string(), "hello-world".to_string()),
-        //     ("C-q".to_string(), "close-window".to_string()),
-        // ])),
         styles: HashMap::new(),
         commands: HashMap::new(),
     };
@@ -128,21 +120,6 @@ fn setup_config() -> config::Config {
         .styles
         .insert("foreground".to_string(), "#F54927".to_string());
 
-    // config
-    //     .commands
-    //     .insert("move_down".to_string(), globals::move_down);
-    // config.commands.insert("kill".to_string(), globals::kill);
-    // config
-    //     .commands
-    //     .insert("close-window".to_string(), globals::close_window);
-    // config
-    //     .commands
-    //     .insert("hello-world".to_string(), globals::hello_world_popup);
-    // config.commands.insert(
-    //     "split-scratch-down".to_string(),
-    //     globals::split_scratch_down,
-    // );
-    //
     config
 }
 fn setup_engine(config: Config, args: Vec<String>) -> Engine {

@@ -1,11 +1,6 @@
-use serde_json::{Value, json};
+use crate::engine::Engine;
 
-use crate::commands::command_dispatcher::CommandContext;
-
-// use crate::{
-//     commands::command_dispatcher::CommandContext,
-//     engine::{Engine, EngineEvent, document::DocumentData, popup::PopupPosition},
-// };
+// use crate::engine::{Engine, EngineEvent, document::DocumentData, popup::PopupPosition};
 //
 // pub fn move_down(engine: &mut Engine) -> Result<(), String> {
 //     if let Some(win) = engine.windows.get_mut(&engine.active_window) {
@@ -14,11 +9,10 @@ use crate::commands::command_dispatcher::CommandContext;
 //     Ok(())
 // }
 //
-pub fn kill(neo: &mut CommandContext, _params: Vec<Value>) -> Result<Value, String> {
+pub fn kill(engine: &mut Engine) -> Result<(), String> {
     // engine.should_quit = true; // or however you exit
-    println!("should kill");
-    neo.call("kill".to_string(), json!({}));
-    Ok(json!({}))
+    engine.should_quit = true;
+    Ok(())
 }
 //
 // pub fn split_scratch_down(engine: &mut Engine) -> Result<(), String> {
@@ -27,14 +21,14 @@ pub fn kill(neo: &mut CommandContext, _params: Vec<Value>) -> Result<Value, Stri
 //     Ok(())
 // }
 //
-// pub fn close_window(ctx: CommandContext) -> Result<(), String> {
+// pub fn close_window(engine: &mut Engine) -> Result<(), String> {
 //     let doc_id = engine.windows[&engine.active_window.clone()].doc_id.clone();
 //     engine.close_doc(&doc_id)?;
 //     engine.close_window(&engine.active_window.clone())?;
 //     Ok(())
 // }
 //
-// pub fn hello_world_popup(ctx: CommandContext) -> Result<(), String> {
+// pub fn hello_world_popup(engine: &mut Engine) -> Result<(), String> {
 //     let data = crate::engine::document::DocumentData::Text(vec![
 //         String::new(),
 //         String::new(),

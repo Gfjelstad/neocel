@@ -21,14 +21,13 @@ pub struct CommandContext<'a> {
     pub fp: APICaller<'a>,
 }
 impl<'a> CommandContext<'a> {
-    pub fn call(&mut self, id: String, params: Value) -> Option<Value> {
+    pub fn call(&mut self, id: String, params: Option<Value>) -> Result<Option<Value>, String> {
         println!("should actually quit");
-        let res = (self.fp)(id, params);
-        res.unwrap_or(None)
+        (self.fp)(id, params)
     }
 }
 
-type CommandResult = Result<Value, String>;
+type CommandResult = Result<Option<Value>, String>;
 type CommandFn = dyn FnMut(&mut CommandContext, Vec<Value>) -> CommandResult;
 
 pub struct CommandDispatcher {
@@ -119,10 +118,11 @@ impl CommandDispatcher {
     ) -> CommandResult {
         match func {
             CommandFunction::Rust(f) => f(ctx, args),
-            _ => Ok(json!({"error": "python not implimented",})), // CommandFunction::Python(py_fn) => py_fn
-                                                                  //     .call1(py, (ctx, args))
-                                                                  //     .map(|v| v.extract::<Value>(py).unwrap_or(Value::Null))
-                                                                  //     .map_err(|e| e.to_string()),
+            CommandFunction::Internal(id, params) => ctx.call(id.clone(), params.clone()),
+            _ => Ok(Some(json!({"error": "python not implimented",}))), // CommandFunction::Python(py_fn) => py_fn
+                                                                        //     .call1(py, (ctx, args))
+                                                                        //     .map(|v| v.extract::<Value>(py).unwrap_or(Value::Null))
+                                                                        //     .map_err(|e| e.to_string()),
         }
     }
 
@@ -174,4 +174,5 @@ impl Default for CommandDispatcher {
 pub enum CommandFunction {
     Rust(Box<CommandFn>),
     Python(Py<PyAny>),
+    Internal(String, Option<Value>),
 }

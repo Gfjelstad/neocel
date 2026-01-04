@@ -16,7 +16,7 @@ pub struct APIMethodParams<'a> {
     input_engine: &'a mut InputEngine,
     ui: &'a mut UI,
     command_dispatch: &'a mut CommandDispatchQueue,
-    params: Value,
+    params: Option<Value>,
 }
 pub type APIMethodResult = Result<Option<Value>, String>;
 pub type APIMethod = for<'a, 'b> fn(&'b mut APIMethodParams<'a>) -> APIMethodResult;
@@ -24,7 +24,7 @@ pub struct API {
     commands: HashMap<String, APIMethod>,
 }
 
-pub type APICaller<'a> = &'a mut dyn FnMut(String, Value) -> Result<Option<Value>, String>;
+pub type APICaller<'a> = &'a mut dyn FnMut(String, Option<Value>) -> Result<Option<Value>, String>;
 
 impl API {
     pub fn new() -> Self {
@@ -53,7 +53,7 @@ impl API {
     {
         // define the callable function that executes commands
         let mut callable =
-            |command_name: String, mut params: Value| -> Result<Option<Value>, String> {
+            |command_name: String, mut params: Option<Value>| -> Result<Option<Value>, String> {
                 if let Some(func) = self.commands.get(&command_name) {
                     // assuming func expects a mutable tuple of references
                     let mut tuple_args = APIMethodParams {
