@@ -1,4 +1,6 @@
+pub mod document_api;
 pub mod engine_api;
+pub mod text_document_api;
 pub mod utils;
 use std::collections::HashMap;
 

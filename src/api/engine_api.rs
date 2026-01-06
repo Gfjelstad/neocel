@@ -1,8 +1,3 @@
-use std::collections::HashMap;
-
-use serde::Deserialize;
-use serde_json::json;
-
 use crate::{
     api::{
         APIMethod, APIMethodParams, APIMethodResult, APIRegister,
@@ -16,6 +11,9 @@ use crate::{
     },
     render::helpers::BorderStyle,
 };
+use serde::Deserialize;
+use serde_json::json;
+use std::collections::HashMap;
 
 pub struct EngineAPI {}
 

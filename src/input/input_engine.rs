@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::{
@@ -32,7 +33,7 @@ pub struct InputEngine {
     pending: PendingState,
     pub mode: Mode,
 }
-#[derive(Clone, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 pub enum ModeType {
     Input,
     Visualize,
