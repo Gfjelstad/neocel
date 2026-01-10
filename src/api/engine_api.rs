@@ -5,7 +5,6 @@ use crate::{
     },
     engine::{
         EngineEvent, SplitDirection, WindowState,
-        document::{DocId, Document},
         layout::{LayoutNode, SplitDir},
         popup::{PopupPosition, PopupWindow, RelativeTo},
     },
@@ -147,17 +146,25 @@ impl EngineAPI {
     }
     pub fn close_window(state: &mut APIMethodParams) -> APIMethodResult {
         let win_id = utils::try_parse::<WindowIdParams>(state.params.clone())?.win_id;
-        state.engine.windows.remove(&win_id);
         if let Some(old_layout) = std::mem::take(&mut state.engine.layout) {
-            let new_layout = old_layout.remove_window(&win_id).unwrap_or_else(|| {
-                let new_win = state.engine.create_empty_window();
-                LayoutNode::Leaf(new_win)
-            });
+            let new_layout = old_layout
+                .remove_window(&win_id)
+                .ok_or_else(|| format!("Window `{}` not found in layout", &win_id))?;
+
             state.engine.layout = Some(new_layout);
         }
+        state.engine.windows.remove(&win_id);
+
         if state.engine.active_window == win_id {
-            state.engine.active_window = state.engine.windows.keys().next().unwrap().clone();
+            state.engine.active_window = state
+                .engine
+                .windows
+                .keys()
+                .next()
+                .cloned()
+                .ok_or_else(|| "No windows left after closing window".to_string())?;
         }
+
         state.engine.emit(&EngineEvent::WindowClose(win_id.clone()));
         Ok(None)
     }

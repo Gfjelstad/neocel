@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 use crate::{
     commands::{Key, KeyCode, Modifiers, command_dispatcher::Command},
-    engine::{Engine, document::DocumentData, documents::InsertModeProvider},
+    engine::{Engine, documents::InsertModeProvider},
     input::{
         Token,
         keymaps::{ActionNode, KeymapProvider},
@@ -26,6 +26,12 @@ impl PendingState {
             modifier: None,
             motion: None,
         }
+    }
+}
+
+impl Default for PendingState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 pub struct InputEngine {

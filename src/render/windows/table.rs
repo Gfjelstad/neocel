@@ -28,7 +28,7 @@ impl Window for TableWindow {
         )
         .unwrap();
         let (win, doc) = engine.get_window(&self.window_id);
-        let mut rect = draw_border(
+        let rect = draw_border(
             &self.window_id,
             rect,
             buffer,
@@ -91,7 +91,7 @@ impl Window for TableWindow {
                 let buf_y = row + rect.y + 1;
                 let color = if row % 2 == 0 { bg } else { bg_secondary };
                 let mut loc: usize = rect.x;
-                buffer.cells[buf_y][loc].ch = '⎸';
+                buffer.cells[buf_y][loc].ch = ' ';
                 buffer.cells[buf_y][loc].bg = fg;
                 loc += 1;
                 for col in 0..=max_cols {
@@ -156,18 +156,18 @@ fn format_cell(content: &str, width: usize, align: Alignment) -> Vec<char> {
     match align {
         Alignment::Left => {
             chars.extend(content.chars());
-            chars.extend(std::iter::repeat(' ').take(padding));
+            chars.extend(std::iter::repeat_n(' ', padding));
         }
         Alignment::Right => {
-            chars.extend(std::iter::repeat(' ').take(padding));
+            chars.extend(std::iter::repeat_n(' ', padding));
             chars.extend(content.chars());
         }
         Alignment::Center => {
             let left_pad = padding / 2;
             let right_pad = padding - left_pad;
-            chars.extend(std::iter::repeat(' ').take(left_pad));
+            chars.extend(std::iter::repeat_n(' ', left_pad));
             chars.extend(content.chars());
-            chars.extend(std::iter::repeat(' ').take(right_pad));
+            chars.extend(std::iter::repeat_n(' ', right_pad));
         }
     }
 

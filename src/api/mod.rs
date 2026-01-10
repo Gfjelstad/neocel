@@ -1,10 +1,11 @@
+pub mod command_api;
 pub mod document_api;
 pub mod engine_api;
 pub mod text_document_api;
 pub mod utils;
 use std::collections::HashMap;
 
-use serde_json::{Value, to_string};
+use serde_json::{Value};
 
 use crate::{
     commands::command_dispatcher::{CommandDispatchQueue, CommandDispatcher},
@@ -17,7 +18,7 @@ pub struct APIMethodParams<'a> {
     engine: &'a mut Engine,
     input_engine: &'a mut InputEngine,
     ui: &'a mut UI,
-    command_dispatch: &'a mut CommandDispatchQueue,
+    command_dispatch: &'a mut CommandDispatcher,
     params: Option<Value>,
 }
 pub type APIMethodResult = Result<Option<Value>, String>;
@@ -30,9 +31,14 @@ pub type APICaller<'a> = &'a mut dyn FnMut(String, Option<Value>) -> Result<Opti
 
 impl API {
     pub fn new() -> Self {
-        Self {
+        let mut s = Self {
             commands: HashMap::new(),
-        }
+        };
+        engine_api::EngineAPI::register_methods(&mut s);
+        command_api::CommandAPI::register_methods(&mut s);
+        document_api::DocumentAPI::register_methods(&mut s);
+        text_document_api::TextDocumentAPI::register_methods(&mut s);
+        s
     }
     pub fn register_api(&mut self, methods: HashMap<&str, APIMethod>) {
         let mut t: HashMap<String, APIMethod> = methods
@@ -47,11 +53,11 @@ impl API {
         engine: &mut Engine,
         input_engine: &mut InputEngine,
         ui: &mut UI,
-        command_dispatch: &mut CommandDispatchQueue,
+        command_dispatch: &mut CommandDispatcher,
         mut callback: F,
-    ) -> Result<(), String>
+    ) -> Result<Option<Value>, String>
     where
-        F: FnMut(APICaller),
+        F: FnMut(APICaller) -> Result<Option<Value>, String>,
     {
         // define the callable function that executes commands
         let mut callable =
@@ -73,9 +79,7 @@ impl API {
             };
 
         // invoke the user-provided callback, passing in the callable
-        callback(&mut callable);
-
-        Ok(())
+        return callback(&mut callable);
     }
 }
 
