@@ -156,18 +156,18 @@ fn format_cell(content: &str, width: usize, align: Alignment) -> Vec<char> {
     match align {
         Alignment::Left => {
             chars.extend(content.chars());
-            chars.extend(std::iter::repeat(' ').take(padding));
+            chars.extend(std::iter::repeat_n(' ', padding));
         }
         Alignment::Right => {
-            chars.extend(std::iter::repeat(' ').take(padding));
+            chars.extend(std::iter::repeat_n(' ', padding));
             chars.extend(content.chars());
         }
         Alignment::Center => {
             let left_pad = padding / 2;
             let right_pad = padding - left_pad;
-            chars.extend(std::iter::repeat(' ').take(left_pad));
+            chars.extend(std::iter::repeat_n(' ', left_pad));
             chars.extend(content.chars());
-            chars.extend(std::iter::repeat(' ').take(right_pad));
+            chars.extend(std::iter::repeat_n(' ', right_pad));
         }
     }
 
