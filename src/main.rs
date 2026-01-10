@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     env,
     io::{Write, stdout},
-    panic,
     path::PathBuf,
 };
 
@@ -12,7 +11,6 @@ use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
 };
-use pyo3::Python;
 pub mod api;
 pub mod commands;
 pub mod config;
@@ -21,13 +19,8 @@ pub mod input;
 pub mod render;
 
 use crate::{
-    api::{API, APIRegister, engine_api},
-    commands::{
-        CommandRegistry,
-        command_dispatcher::{CommandContext, CommandDispatcher, CommandFunction},
-        globals::{self},
-    },
-    config::{Config, parse_keymap},
+    commands::command_dispatcher::{CommandDispatcher, CommandFunction},
+    config::Config,
     engine::{Engine, parse::parse_csv_to_doc},
     input::input_engine::InputEngine,
     render::UI,
@@ -69,19 +62,22 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
     let mut input_engine = setup_input_engine(&config);
     let mut command_dispatcher = setup_command_dispatcher(&config);
     let mut engine = setup_engine(config, args);
-    let mut api = setup_api();
     ui.handle_events(&mut engine);
     ui.draw(&mut engine);
-    _ = command_dispatcher.flush_queue(&mut engine, &mut input_engine, &mut ui, &mut api); // run
     // initial commands before awaiting an input;
     loop {
         if let Some(key) = engine.process_input()?
             && let Some(cmd) = input_engine.feed(key, &mut engine)?
         {
-            let (_, doc) = engine.get_current_window();
-            _ = command_dispatcher.dispatch(&doc.doc_type, &cmd);
+            let doc_type = engine.get_current_window().1.doc_type.clone();
+            _ = command_dispatcher.dispatch(
+                &doc_type,
+                &cmd,
+                &mut engine,
+                &mut input_engine,
+                &mut ui,
+            );
         }
-        _ = command_dispatcher.flush_queue(&mut engine, &mut input_engine, &mut ui, &mut api);
         if engine.should_quit {
             break;
         }
@@ -90,11 +86,7 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
     }
     Ok(())
 }
-fn setup_api() -> API {
-    let mut api = API::new();
-    engine_api::EngineAPI::register_methods(&mut api);
-    api
-}
+
 fn setup_input_engine(_config: &Config) -> InputEngine {
     InputEngine::new()
 }
