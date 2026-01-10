@@ -5,7 +5,7 @@ pub mod text_document_api;
 pub mod utils;
 use std::collections::HashMap;
 
-use serde_json::{Value, to_string};
+use serde_json::{Value};
 
 use crate::{
     commands::command_dispatcher::{CommandDispatchQueue, CommandDispatcher},
@@ -31,7 +31,6 @@ pub type APICaller<'a> = &'a mut dyn FnMut(String, Option<Value>) -> Result<Opti
 
 impl API {
     pub fn new() -> Self {
-        let mut commands: HashMap<String, APIMethod> = HashMap::new();
         let mut s = Self {
             commands: HashMap::new(),
         };

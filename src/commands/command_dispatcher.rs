@@ -19,7 +19,7 @@ pub struct Command {
 }
 
 pub struct CommandContext<'a> {
-    pub fp: APICaller<'a>,
+    fp: APICaller<'a>,
 }
 impl<'a> CommandContext<'a> {
     pub fn call(&mut self, id: String, params: Option<Value>) -> Result<Option<Value>, String> {
@@ -62,12 +62,12 @@ impl CommandDispatcher {
 
     pub fn dispatch(
         &mut self,
-        doc_type: &DocType,
         cmd: &Command,
         engine: &mut Engine,
         input_engine: &mut InputEngine,
         ui: &mut UI,
     ) -> Result<Option<Value>, String> {
+        let doc_type = &engine.get_current_window().1.doc_type.clone();
         let selected_command = self
             .per_document
             .get(doc_type)

@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     env,
+    fs::File,
     io::{Write, stdout},
     path::PathBuf,
 };
@@ -11,6 +12,8 @@ use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
 };
+use log::LevelFilter;
+use simplelog::WriteLogger;
 pub mod api;
 pub mod commands;
 pub mod config;
@@ -26,6 +29,7 @@ use crate::{
     render::UI,
 };
 fn main() -> Result<(), String> {
+    init_logger();
     let mut _args: Vec<String> = env::args().collect();
     if _args.len() == 1 {
         _args.push(String::new())
@@ -64,19 +68,17 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
     let mut engine = setup_engine(config, args);
     ui.handle_events(&mut engine);
     ui.draw(&mut engine);
+    log::info!("Successfully created engines");
     // initial commands before awaiting an input;
     loop {
         if let Some(key) = engine.process_input()?
             && let Some(cmd) = input_engine.feed(key, &mut engine)?
         {
-            let doc_type = engine.get_current_window().1.doc_type.clone();
-            _ = command_dispatcher.dispatch(
-                &doc_type,
-                &cmd,
-                &mut engine,
-                &mut input_engine,
-                &mut ui,
-            );
+            let res = command_dispatcher.dispatch(&cmd, &mut engine, &mut input_engine, &mut ui);
+            match res {
+                Ok(_) => log::info!("OK running command {:?}", cmd.id),
+                Err(err) => log::warn!("failed running command {:?}: {:?}", cmd.id, err),
+            }
         }
         if engine.should_quit {
             break;
@@ -127,4 +129,16 @@ fn setup_engine(config: Config, args: Vec<String>) -> Engine {
 }
 fn setup_ui(config: &Config) -> UI {
     UI::new(config)
+}
+fn init_logger() {
+    let mut log_path = env::current_exe()
+        .expect("Failed to get exe path")
+        .parent()
+        .expect("EXE must live in a directory")
+        .to_path_buf();
+    log_path.push("neocel.log");
+    let file = File::create(log_path).expect("Failed to create log file");
+
+    WriteLogger::init(LevelFilter::Info, simplelog::Config::default(), file)
+        .expect("Failed to initialize logger");
 }

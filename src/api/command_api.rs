@@ -12,15 +12,14 @@ pub struct CommandAPI {}
 impl CommandAPI {
     pub fn run_command(state: &mut APIMethodParams) -> APIMethodResult {
         let command = try_parse::<RunCommandParams>(state.params.clone())?.command;
-        let doc_type = state.engine.get_current_window().1.doc_type.clone();
-        state.command_dispatch.dispatch(
-            &doc_type,
-            &command,
-            state.engine,
-            state.input_engine,
-            state.ui,
-        );
-        Ok(None)
+
+        state
+            .command_dispatch
+            .dispatch(&command, state.engine, state.input_engine, state.ui)
+    }
+
+    pub fn register_command(state: &mut APIMethodParams) -> APIMethodResult {
+Ok(None)
     }
 }
 
@@ -37,3 +36,11 @@ impl APIRegister for CommandAPI {
 struct RunCommandParams {
     command: Command,
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct RegisterCommandParams {
+    id: String,
+    command: Command,
+}
+
