@@ -1,17 +1,12 @@
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    rc::Rc,
-    sync::{Arc, Mutex},
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use pyo3::prelude::*;
-use serde::{Deserialize, Serialize, de::value::StrDeserializer};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
     api::{API, APICaller},
-    engine::{Engine, WindowState, document::DocType},
+    engine::{Engine, document::DocType},
     input::input_engine::InputEngine,
     render::UI,
 };
@@ -28,7 +23,6 @@ pub struct CommandContext<'a> {
 }
 impl<'a> CommandContext<'a> {
     pub fn call(&mut self, id: String, params: Option<Value>) -> Result<Option<Value>, String> {
-        println!("should actually quit");
         (self.fp)(id, params)
     }
 }
@@ -103,45 +97,6 @@ impl CommandDispatcher {
             CommandFunction::Python(_) => Ok(Some(json!({ "error": "python not implemented" }))),
         }
     }
-
-    // pub fn flush_queue(
-    //     &mut self,
-    //     engine: &mut Engine,
-    //     input_engine: &mut InputEngine,
-    //     ui: &mut UI,
-    //     api: &mut API,
-    // ) -> Result<(), String> {
-    //     let mut queue = Some(std::mem::take(&mut self.queue));
-    //     let mut new_queue: CommandDispatchQueue = vec![];
-    //     _ = api.run_command(engine, input_engine, ui, &mut new_queue, |caller| {
-    //         let mut ctx = CommandContext { fp: caller };
-    //         let queue = queue.take().expect("run_command called multiple times");
-    //         for queued in queue {
-    //             match queued {
-    //                 CommandDispatchQueueItem::Global(id, args) => {
-    //                     if let Some(func) = self.global.get_mut(&id) {
-    //                         _ = Self::call_command_func(func, &mut ctx, args);
-    //                     }
-    //                 }
-    //                 CommandDispatchQueueItem::Doc(doc_type, id, args) => {
-    //                     if let Some(doc_fns) = self.per_document.get_mut(&doc_type)
-    //                         && let Some(func) = doc_fns.get_mut(&id)
-    //                     {
-    //                         _ = Self::call_command_func(func, &mut ctx, args);
-    //                     }
-    //                 }
-    //                 CommandDispatchQueueItem::RegisterGlobal(id, command_function) => {
-    //                     self.global.insert(id, command_function);
-    //                 }
-    //                 CommandDispatchQueueItem::RegisterDoc(doc_type, id, command_function) => {
-    //                     self.register_for_doc(doc_type, id.as_str(), command_function)
-    //                 }
-    //             }
-    //         }
-    //     });
-    //     self.queue = new_queue;
-    //     Ok(())
-    // }
 }
 
 impl Default for CommandDispatcher {

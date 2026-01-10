@@ -28,7 +28,7 @@ impl Window for TableWindow {
         )
         .unwrap();
         let (win, doc) = engine.get_window(&self.window_id);
-        let mut rect = draw_border(
+        let rect = draw_border(
             &self.window_id,
             rect,
             buffer,
@@ -91,7 +91,7 @@ impl Window for TableWindow {
                 let buf_y = row + rect.y + 1;
                 let color = if row % 2 == 0 { bg } else { bg_secondary };
                 let mut loc: usize = rect.x;
-                buffer.cells[buf_y][loc].ch = '⎸';
+                buffer.cells[buf_y][loc].ch = ' ';
                 buffer.cells[buf_y][loc].bg = fg;
                 loc += 1;
                 for col in 0..=max_cols {
