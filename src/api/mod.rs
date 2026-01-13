@@ -5,13 +5,11 @@ pub mod text_document_api;
 pub mod utils;
 use std::collections::HashMap;
 
-use serde_json::{Value};
+use serde_json::Value;
 
 use crate::{
-    commands::command_dispatcher::{CommandDispatchQueue, CommandDispatcher},
-    engine::Engine,
-    input::input_engine::InputEngine,
-    render::UI,
+    commands::command_dispatcher::CommandDispatcher, engine::Engine,
+    input::input_engine::InputEngine, render::UI,
 };
 
 pub struct APIMethodParams<'a> {
@@ -41,7 +39,7 @@ impl API {
         s
     }
     pub fn register_api(&mut self, methods: HashMap<&str, APIMethod>) {
-        let mut t: HashMap<String, APIMethod> = methods
+        let t: HashMap<String, APIMethod> = methods
             .into_iter()
             .map(|(k, v)| (k.to_string(), v))
             .collect();
@@ -59,17 +57,15 @@ impl API {
     where
         F: FnMut(APICaller) -> Result<Option<Value>, String>,
     {
-        // define the callable function that executes commands
         let mut callable =
-            |command_name: String, mut params: Option<Value>| -> Result<Option<Value>, String> {
+            |command_name: String, params: Option<Value>| -> Result<Option<Value>, String> {
                 if let Some(func) = self.commands.get(&command_name) {
-                    // assuming func expects a mutable tuple of references
                     let mut tuple_args = APIMethodParams {
                         engine,
                         input_engine,
                         ui,
                         command_dispatch,
-                        params: params,
+                        params,
                     };
                     func(&mut tuple_args)
                 } else {
@@ -79,7 +75,7 @@ impl API {
             };
 
         // invoke the user-provided callback, passing in the callable
-        return callback(&mut callable);
+        callback(&mut callable)
     }
 }
 

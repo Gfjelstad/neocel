@@ -1,90 +1,21 @@
-use std::collections::HashMap;
-
-use serde::Deserialize;
-use serde_json::{Value, json};
-
 use crate::{
-    commands::{Key, KeyCode, Modifiers, command_dispatcher::Command},
-    engine::{Engine, documents::InsertModeProvider},
+    commands::{Key, KeyCode, Modifiers, command_dispatcher::CommandRequest},
+    engine::Engine,
     input::{
         Token,
         keymaps::{ActionNode, KeymapProvider},
     },
 };
+use serde::Deserialize;
+use serde_json::{Value, json};
+use std::collections::HashMap;
 
-pub struct PendingState {
-    pub count: Option<u32>,
-    pub operator: Option<String>,
-    pub modifier: Option<String>,
-    pub motion: Option<String>,
-}
-impl PendingState {
-    pub fn new() -> Self {
-        Self {
-            count: None,
-            operator: None,
-            modifier: None,
-            motion: None,
-        }
-    }
-}
-
-impl Default for PendingState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 pub struct InputEngine {
     active_nodes: Vec<Option<ActionNode>>,
     pending: PendingState,
     pub mode: Mode,
 }
-#[derive(Deserialize, Clone, Debug)]
-pub enum ModeType {
-    Input,
-    Visualize,
-    Normal,
-}
-pub struct Mode {
-    mode: ModeType,
-    keymap: Option<ActionNode>,
-}
-impl Mode {
-    pub fn new(mode: ModeType) -> Self {
-        Self {
-            mode: mode.clone(),
-            keymap: None,
-        }
-    }
-}
-impl KeymapProvider for Mode {
-    fn define_keymap(&self) -> ActionNode {
-        let mut keymap: HashMap<Key, ActionNode> = HashMap::new();
-        keymap.insert(
-            Key {
-                code: crate::commands::KeyCode::Char('f'),
-                modifiers: crate::commands::Modifiers::CTRL,
-            },
-            ActionNode {
-                children: HashMap::new(),
-                action: Some(crate::input::Token::Command(Command {
-                    id: "kill".to_string(),
-                    args: vec![],
-                })),
-            },
-        );
-        ActionNode {
-            children: keymap,
-            action: None,
-        }
-    }
-    fn get_keymap_cache(&self) -> &Option<ActionNode> {
-        &self.keymap
-    }
-    fn set_keymap_cache(&mut self, value: Option<ActionNode>) {
-        self.keymap = value;
-    }
-}
+
 impl InputEngine {
     pub fn new() -> Self {
         Self {
@@ -93,7 +24,11 @@ impl InputEngine {
             mode: Mode::new(ModeType::Input),
         }
     }
-    pub fn feed(&mut self, key: Key, engine: &mut Engine) -> Result<Option<Command>, String> {
+    pub fn feed(
+        &mut self,
+        key: Key,
+        engine: &mut Engine,
+    ) -> Result<Option<CommandRequest>, String> {
         // get potential token from key, match on token to fill out pending state, on motion or
         // command, emit command to command_dispatcher
         if let ModeType::Input = self.mode.mode {
@@ -131,7 +66,7 @@ impl InputEngine {
         }
         Ok(None)
     }
-    fn create_operator_command(&mut self) -> Option<Command> {
+    fn create_operator_command(&mut self) -> Option<CommandRequest> {
         if self.pending.operator.is_none() {
             self.reset();
             return None;
@@ -147,7 +82,7 @@ impl InputEngine {
         if self.pending.modifier.is_some() {
             args.push(json!({"modifier":self.pending.modifier}));
         }
-        Some(Command {
+        Some(CommandRequest {
             id: "editor.operator".to_string(),
             args,
         })
@@ -205,6 +140,74 @@ impl InputEngine {
 }
 
 impl Default for InputEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+#[derive(Deserialize, Clone, Debug)]
+pub enum ModeType {
+    Input,
+    Visualize,
+    Normal,
+}
+pub struct Mode {
+    mode: ModeType,
+    keymap: Option<ActionNode>,
+}
+impl Mode {
+    pub fn new(mode: ModeType) -> Self {
+        Self {
+            mode: mode.clone(),
+            keymap: None,
+        }
+    }
+}
+impl KeymapProvider for Mode {
+    fn define_keymap(&self) -> ActionNode {
+        let mut keymap: HashMap<Key, ActionNode> = HashMap::new();
+        keymap.insert(
+            Key {
+                code: crate::commands::KeyCode::Char('f'),
+                modifiers: crate::commands::Modifiers::CTRL,
+            },
+            ActionNode {
+                children: HashMap::new(),
+                action: Some(crate::input::Token::Command(CommandRequest {
+                    id: "kill".to_string(),
+                    args: vec![],
+                })),
+            },
+        );
+        ActionNode {
+            children: keymap,
+            action: None,
+        }
+    }
+    fn get_keymap_cache(&self) -> &Option<ActionNode> {
+        &self.keymap
+    }
+    fn set_keymap_cache(&mut self, value: Option<ActionNode>) {
+        self.keymap = value;
+    }
+}
+pub struct PendingState {
+    pub count: Option<u32>,
+    pub operator: Option<String>,
+    pub modifier: Option<String>,
+    pub motion: Option<String>,
+}
+impl PendingState {
+    pub fn new() -> Self {
+        Self {
+            count: None,
+            operator: None,
+            modifier: None,
+            motion: None,
+        }
+    }
+}
+
+impl Default for PendingState {
     fn default() -> Self {
         Self::new()
     }

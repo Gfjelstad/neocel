@@ -1,4 +1,4 @@
-use crate::commands::command_dispatcher::Command;
+use crate::commands::command_dispatcher::CommandRequest;
 
 pub mod input_engine;
 pub mod keymaps;
@@ -10,5 +10,5 @@ pub enum Token {
     Digit(u32),
     Operator(Operator),
     Motion(Motion),
-    Command(Command),
+    Command(CommandRequest),
 }

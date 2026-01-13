@@ -1,13 +1,5 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
-
-use serde::Serialize;
-use uuid::Uuid;
-
 use crate::{
-    commands::{Key, Modifiers, command_dispatcher::Command},
+    commands::{Key, Modifiers, command_dispatcher::CommandRequest},
     engine::{
         Edit,
         documents::{
@@ -16,10 +8,17 @@ use crate::{
     },
     input::keymaps::{ActionNode, KeymapProvider},
 };
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
+use uuid::Uuid;
 
 pub type DocId = String;
 
-#[derive(Eq, Clone, Hash, PartialEq, Serialize)]
+#[derive(Eq, Clone, Hash, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DocType {
     SpreadSheet,
     Info,
@@ -97,7 +96,7 @@ impl KeymapProvider for Document {
                     },
                     ActionNode {
                         children: HashMap::new(),
-                        action: Some(crate::input::Token::Command(Command {
+                        action: Some(crate::input::Token::Command(CommandRequest {
                             id: "window.split_scratch_down".to_string(),
                             args: vec![],
                         })),

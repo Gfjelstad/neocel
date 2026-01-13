@@ -1,46 +1,14 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
-
-use pyo3::prelude::*;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-
 use crate::{
     api::{API, APICaller},
     engine::{Engine, document::DocType},
     input::input_engine::InputEngine,
     render::UI,
 };
+use pyo3::prelude::*;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-pub type CommandId = String;
-#[derive(Clone, Deserialize, Serialize, Debug)]
-pub struct Command {
-    pub id: CommandId,
-    pub args: Vec<Value>,
-}
-
-pub struct CommandContext<'a> {
-    fp: APICaller<'a>,
-}
-impl<'a> CommandContext<'a> {
-    pub fn call(&mut self, id: String, params: Option<Value>) -> Result<Option<Value>, String> {
-        (self.fp)(id, params)
-    }
-}
-
-type CommandResult = Result<Option<Value>, String>;
-type CommandFn = dyn FnMut(&mut CommandContext, Vec<Value>) -> CommandResult;
-
-pub struct CommandDispatcher {
-    pub global: HashMap<String, CommandHandle>,
-    pub per_document: HashMap<DocType, HashMap<String, CommandHandle>>,
-}
-pub type CommandDispatchQueue = Vec<CommandDispatchQueueItem>;
-pub enum CommandDispatchQueueItem {
-    Global(String, Vec<Value>),
-    Doc(DocType, String, Vec<Value>),
-    RegisterGlobal(String, CommandFunction),
-    RegisterDoc(DocType, String, CommandFunction),
-}
 impl CommandDispatcher {
     pub fn new() -> Self {
         Self {
@@ -62,7 +30,7 @@ impl CommandDispatcher {
 
     pub fn dispatch(
         &mut self,
-        cmd: &Command,
+        cmd: &CommandRequest,
         engine: &mut Engine,
         input_engine: &mut InputEngine,
         ui: &mut UI,
@@ -103,6 +71,30 @@ impl Default for CommandDispatcher {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub type CommandId = String;
+#[derive(Clone, Deserialize, Serialize, Debug)]
+pub struct CommandRequest {
+    pub id: CommandId,
+    pub args: Vec<Value>,
+}
+
+pub struct CommandContext<'a> {
+    fp: APICaller<'a>,
+}
+impl<'a> CommandContext<'a> {
+    pub fn call(&mut self, id: String, params: Option<Value>) -> Result<Option<Value>, String> {
+        (self.fp)(id, params)
+    }
+}
+
+type CommandResult = Result<Option<Value>, String>;
+type CommandFn = dyn FnMut(&mut CommandContext, Vec<Value>) -> CommandResult;
+
+pub struct CommandDispatcher {
+    pub global: HashMap<String, CommandHandle>,
+    pub per_document: HashMap<DocType, HashMap<String, CommandHandle>>,
 }
 pub type CommandHandle = Rc<RefCell<CommandFunction>>;
 pub enum CommandFunction {

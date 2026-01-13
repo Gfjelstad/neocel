@@ -4,7 +4,8 @@ use serde::Deserialize;
 
 use crate::{
     api::{APIMethod, APIMethodParams, APIMethodResult, APIRegister, utils::try_parse},
-    commands::command_dispatcher::Command,
+    commands::command_dispatcher::CommandRequest,
+    engine::document::DocType,
 };
 
 pub struct CommandAPI {}
@@ -19,7 +20,8 @@ impl CommandAPI {
     }
 
     pub fn register_command(state: &mut APIMethodParams) -> APIMethodResult {
-Ok(None)
+        let command = try_parse::<RegisterCommandParams>(state.params.clone());
+        Ok(None)
     }
 }
 
@@ -34,13 +36,12 @@ impl APIRegister for CommandAPI {
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct RunCommandParams {
-    command: Command,
+    command: CommandRequest,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct RegisterCommandParams {
     id: String,
-    command: Command,
+    doc_type: DocType,
 }
-
