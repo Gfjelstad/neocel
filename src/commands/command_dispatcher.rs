@@ -1,10 +1,10 @@
 use crate::{
-    api::{API, APICaller},
+    api::{API, APICaller, ExternalCommandInput},
     engine::{Engine, document::DocType},
     input::input_engine::InputEngine,
     render::UI,
 };
-use pyo3::prelude::*;
+use pyo3::{ffi::PyCFunction, prelude::*, types::PyDict};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
@@ -61,8 +61,45 @@ impl CommandDispatcher {
     ) -> CommandResult {
         match func {
             CommandFunction::Rust(f) => f(ctx, args),
-            CommandFunction::Internal(id, params) => ctx.call(id.clone(), params.clone()),
-            CommandFunction::Python(_) => Ok(Some(json!({ "error": "python not implemented" }))),
+            CommandFunction::Internal(id, params) => ctx.call(
+                id.clone(),
+                Some(ExternalCommandInput::JSON(params.clone().unwrap())),
+            ),
+            CommandFunction::Python(py_func) => {
+                Python::with_gil(|py| {
+                    let py_args = pythonize::pythonize(py, &args)
+                        .map_err(|e| format!("Failed to convert args: {}", e))?;
+
+                    // Create API context with raw pointer
+                    let fp_ptr = ctx.fp
+                        as *mut dyn FnMut(
+                            String,
+                            Option<ExternalCommandInput>,
+                        ) -> Result<Option<Value>, String>;
+                    let static_ptr: *mut (
+                        dyn FnMut(
+                                String,
+                                Option<ExternalCommandInput>,
+                            ) -> Result<Option<Value>, String>
+                            + 'static
+                    ) = unsafe { std::mem::transmute(fp_ptr) };
+
+                    let api = Py::new(py, ApiContext { fp_ptr: static_ptr })
+                        .map_err(|e| e.to_string())?;
+
+                    let result = py_func
+                        .call1(py, (api, py_args))
+                        .map_err(|e| format!("Python call failed: {}", e))?;
+
+                    if result.is_none(py) {
+                        Ok(None)
+                    } else {
+                        pythonize::depythonize(result.bind(py))
+                            .map(Some)
+                            .map_err(|e| format!("Failed to deserialize result: {}", e))
+                    }
+                })
+            }
         }
     }
 }
@@ -84,7 +121,11 @@ pub struct CommandContext<'a> {
     fp: APICaller<'a>,
 }
 impl<'a> CommandContext<'a> {
-    pub fn call(&mut self, id: String, params: Option<Value>) -> Result<Option<Value>, String> {
+    pub fn call(
+        &mut self,
+        id: String,
+        params: Option<ExternalCommandInput>,
+    ) -> Result<Option<Value>, String> {
         (self.fp)(id, params)
     }
 }
@@ -101,4 +142,31 @@ pub enum CommandFunction {
     Rust(Box<CommandFn>),
     Python(Py<PyAny>),
     Internal(String, Option<Value>),
+}
+#[pyclass(unsendable)]
+struct ApiContext {
+    fp_ptr: *mut (
+        dyn FnMut(String, Option<ExternalCommandInput>) -> Result<Option<Value>, String> + 'static
+    ),
+}
+
+#[pymethods]
+impl ApiContext {
+    fn call(&self, id: String, params: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        Python::attach(|py| {
+            let input = params.map(|p| ExternalCommandInput::Python(p));
+
+            // UNSAFE: Call through the raw pointer
+            let result = unsafe { (*self.fp_ptr)(id, input) }
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e))?;
+
+            let res = match result {
+                Some(value) => pythonize::pythonize(py, &value)
+                    .map(|v| v.into_pyobject(py).unwrap().unbind())
+                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())),
+                None => Ok(py.None()),
+            };
+            res
+        })
+    }
 }

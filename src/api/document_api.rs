@@ -11,7 +11,7 @@ pub struct DocumentAPI {}
 
 impl DocumentAPI {
     pub fn change_mode(state: &mut APIMethodParams) -> APIMethodResult {
-        let imode = try_parse::<ChangeModeParams>(state.params.clone())?;
+        let imode = try_parse::<ChangeModeParams>(&state.params)?;
         state.input_engine.mode = Mode::new(imode.mode);
         Ok(None)
     }

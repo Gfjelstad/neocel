@@ -5,19 +5,25 @@ pub mod text_document_api;
 pub mod utils;
 use std::collections::HashMap;
 
+use pyo3::{Py, PyAny};
 use serde_json::Value;
 
 use crate::{
     commands::command_dispatcher::CommandDispatcher, engine::Engine,
     input::input_engine::InputEngine, render::UI,
 };
+#[derive(Debug)]
+pub enum ExternalCommandInput {
+    Python(Py<PyAny>),
+    JSON(Value),
+}
 
 pub struct APIMethodParams<'a> {
     engine: &'a mut Engine,
     input_engine: &'a mut InputEngine,
     ui: &'a mut UI,
     command_dispatch: &'a mut CommandDispatcher,
-    params: Option<Value>,
+    params: Option<ExternalCommandInput>,
 }
 pub type APIMethodResult = Result<Option<Value>, String>;
 pub type APIMethod = for<'a, 'b> fn(&'b mut APIMethodParams<'a>) -> APIMethodResult;
@@ -25,7 +31,8 @@ pub struct API {
     commands: HashMap<String, APIMethod>,
 }
 
-pub type APICaller<'a> = &'a mut dyn FnMut(String, Option<Value>) -> Result<Option<Value>, String>;
+pub type APICaller<'a> =
+    &'a mut dyn FnMut(String, Option<ExternalCommandInput>) -> Result<Option<Value>, String>;
 
 impl API {
     pub fn new() -> Self {
@@ -57,22 +64,23 @@ impl API {
     where
         F: FnMut(APICaller) -> Result<Option<Value>, String>,
     {
-        let mut callable =
-            |command_name: String, params: Option<Value>| -> Result<Option<Value>, String> {
-                if let Some(func) = self.commands.get(&command_name) {
-                    let mut tuple_args = APIMethodParams {
-                        engine,
-                        input_engine,
-                        ui,
-                        command_dispatch,
-                        params,
-                    };
-                    func(&mut tuple_args)
-                } else {
-                    println!("could not find command");
-                    Ok(None)
-                }
-            };
+        let mut callable = |command_name: String,
+                            params: Option<ExternalCommandInput>|
+         -> Result<Option<Value>, String> {
+            if let Some(func) = self.commands.get(&command_name) {
+                let mut tuple_args = APIMethodParams {
+                    engine,
+                    input_engine,
+                    ui,
+                    command_dispatch,
+                    params,
+                };
+                func(&mut tuple_args)
+            } else {
+                println!("could not find command");
+                Ok(None)
+            }
+        };
 
         // invoke the user-provided callback, passing in the callable
         callback(&mut callable)

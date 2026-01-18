@@ -1,6 +1,6 @@
 use crate::{
     api::{
-        APIMethod, APIMethodParams, APIMethodResult, APIRegister,
+        APIMethod, APIMethodParams, APIMethodResult, APIRegister, ExternalCommandInput,
         utils::{self, try_parse},
     },
     engine::{
@@ -18,7 +18,7 @@ pub struct EngineAPI {}
 
 impl EngineAPI {
     pub fn create_window(state: &mut APIMethodParams) -> APIMethodResult {
-        let params = try_parse::<CreateWindowParams>(state.params.clone())?;
+        let params = try_parse::<CreateWindowParams>(&state.params)?;
         match params {
             CreateWindowParams::Split {
                 doc,
@@ -133,11 +133,11 @@ impl EngineAPI {
     }
     pub fn get_current_window(state: &mut APIMethodParams) -> APIMethodResult {
         let win_id = state.engine.active_window.clone();
-        state.params = Some(json!({"win_id": win_id}));
+        state.params = Some(ExternalCommandInput::JSON(json!({"win_id": win_id})));
         Self::get_window(state)
     }
     pub fn get_window(state: &mut APIMethodParams) -> APIMethodResult {
-        let win_id = utils::try_parse::<WindowIdParams>(state.params.clone())?.win_id;
+        let win_id = utils::try_parse::<WindowIdParams>(&state.params)?.win_id;
         let (win, doc) = state.engine.get_window(&win_id);
         Ok(Some(json!({
             "window": win,
@@ -145,7 +145,7 @@ impl EngineAPI {
         })))
     }
     pub fn close_window(state: &mut APIMethodParams) -> APIMethodResult {
-        let win_id = utils::try_parse::<WindowIdParams>(state.params.clone())?.win_id;
+        let win_id = utils::try_parse::<WindowIdParams>(&state.params)?.win_id;
         if let Some(old_layout) = std::mem::take(&mut state.engine.layout) {
             let new_layout = old_layout
                 .remove_window(&win_id)
@@ -169,7 +169,7 @@ impl EngineAPI {
         Ok(None)
     }
     pub fn move_window(state: &mut APIMethodParams) -> APIMethodResult {
-        let dir = utils::try_parse::<WindowMoveParams>(state.params.clone())?.dir;
+        let dir = utils::try_parse::<WindowMoveParams>(&state.params)?.dir;
         let cur_win = state.engine.active_window.clone();
         if let Some(layout) = &state.engine.layout {
             let neighbor = layout.get_neighbor(cur_win, dir);
