@@ -2,14 +2,20 @@ use std::collections::HashMap;
 
 use pyo3::{IntoPyObject, Py, PyAny, PyErr, Python, types::PyAnyMethods};
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::{
     api::{
         APIMethod, APIMethodParams, APIMethodResult, APIRegister, ExternalCommandInput,
         utils::try_parse,
     },
-    commands::command_dispatcher::{CommandFunction, CommandRequest},
+    commands::{
+        Key, build_keymap_tree,
+        command_dispatcher::{CommandFunction, CommandRequest},
+        insert_into_tree,
+    },
     engine::document::DocType,
+    input::{Token, keymaps::KeymapProvider},
 };
 
 pub struct CommandAPI {}
@@ -21,6 +27,11 @@ impl CommandAPI {
         state
             .command_dispatch
             .dispatch(&command, state.engine, state.input_engine, state.ui)
+    }
+
+    pub fn test(state: &mut APIMethodParams) -> APIMethodResult {
+        println!("HELLO FROM THE API");
+        Ok(None)
     }
 
     pub fn register_command(state: &mut APIMethodParams) -> APIMethodResult {
@@ -43,12 +54,40 @@ impl CommandAPI {
 
         Ok(None)
     }
+
+    pub fn register_keybind(state: &mut APIMethodParams) -> APIMethodResult {
+        let command = try_parse::<RegisterKeybind>(&state.params)?;
+
+        // let tree = build_keymap_tree(&command.keys, Token::Command(CommandRequest { id: command.command_id.unwrap().clone(), args: command.params }))?;
+
+        let mut map = state.engine.keymap().clone();
+
+        if command.command_id.is_some() {
+            insert_into_tree(
+                &mut map,
+                &command.keys,
+                Token::Command({
+                    CommandRequest {
+                        id: command.command_id.unwrap().clone(),
+                        args: command.params.unwrap_or_default(),
+                    }
+                }),
+            )?;
+        }
+
+        state.engine.set_keymap_cache(Some(map));
+
+        Ok(None)
+    }
 }
 
 impl APIRegister for CommandAPI {
     fn register_methods(api: &mut super::API) {
         let mut methods: HashMap<&str, APIMethod> = HashMap::new();
-        methods.insert("doc.changeMode", Self::run_command);
+        methods.insert("command.run_command", Self::run_command);
+        methods.insert("command.register_command", Self::register_command);
+        methods.insert("command.test", Self::test);
+        methods.insert("command.register_keybind", Self::register_keybind);
         api.register_api(methods);
     }
 }
@@ -57,6 +96,14 @@ impl APIRegister for CommandAPI {
 #[serde(rename_all = "snake_case")]
 struct RunCommandParams {
     command: CommandRequest,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct RegisterKeybind {
+    keys: Vec<String>,
+    command_id: Option<String>,
+    params: Option<Vec<Value>>,
 }
 
 struct RegisterCommandParams {
@@ -72,6 +119,8 @@ fn parse_register_params(
             ExternalCommandInput::Python(obj) => Python::attach(|py| {
                 let bound_obj = obj.bind(py);
 
+                let str = bound_obj.to_string();
+
                 let res = if bound_obj.is_callable() {
                     bound_obj.call0().map_err(|e| e.to_string())?
                 } else {
@@ -80,24 +129,22 @@ fn parse_register_params(
 
                 // Extract fields directly from Python object
                 let id: String = res
-                    .getattr("id")
+                    .get_item("id")
                     .map_err(|e| e.to_string())?
                     .extract()
                     .map_err(|e: PyErr| e.to_string())?;
 
-                let doc_type_str: Option<String> = res
-                    .getattr("dottype")
-                    .map_err(|e| e.to_string())?
-                    .extract()
-                    .map_err(|e: PyErr| e.to_string())?;
-
+                let doc_type_str: Option<String> = match res.get_item("doc_type") {
+                    Ok(item) => item.extract().ok(),
+                    Err(_) => None,
+                };
                 let doc_type: Option<DocType> = doc_type_str
                     .map(|s| serde_json::from_value(serde_json::Value::String(s)))
                     .transpose()
                     .map_err(|e| format!("Invalid dottype: {}", e))?;
 
                 let function = res
-                    .getattr("function")
+                    .get_item("function")
                     .map_err(|e| e.to_string())?
                     .into_pyobject(py);
                 Ok(RegisterCommandParams {

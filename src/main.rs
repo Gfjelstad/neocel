@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     env,
+    ffi::CString,
     fs::File,
     io::{Write, stdout},
     path::PathBuf,
@@ -13,6 +14,10 @@ use crossterm::{
     terminal::{Clear, ClearType, disable_raw_mode, enable_raw_mode},
 };
 use log::LevelFilter;
+use pyo3::{
+    Py, Python,
+    types::{PyAnyMethods, PyModuleMethods},
+};
 use simplelog::WriteLogger;
 pub mod api;
 pub mod commands;
@@ -22,7 +27,9 @@ pub mod input;
 pub mod render;
 
 use crate::{
-    commands::command_dispatcher::{CommandDispatcher, CommandFunction},
+    commands::command_dispatcher::{
+        ApiContext, CommandDispatcher, CommandFunction, CommandRequest,
+    },
     config::Config,
     engine::{Engine, parse::parse_csv_to_doc},
     input::input_engine::InputEngine,
@@ -69,6 +76,15 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
     ui.handle_events(&mut engine);
     ui.draw(&mut engine);
     log::info!("Successfully created engines");
+    _ =command_dispatcher.dispatch(
+        &CommandRequest {
+            id: "init".to_string(),
+            args: vec![],
+        },
+        &mut engine,
+        &mut input_engine,
+        &mut ui,
+    );
     // initial commands before awaiting an input;
     loop {
         if let Some(key) = engine.process_input()?
@@ -94,11 +110,46 @@ fn setup_input_engine(_config: &Config) -> InputEngine {
 }
 fn setup_command_dispatcher(_config: &Config) -> CommandDispatcher {
     let mut cmd_disp = CommandDispatcher::new();
+
     cmd_disp.register_global("kill", CommandFunction::Internal("kill".to_string(), None));
+    cmd_disp.register_global(
+        "init",
+        CommandFunction::Rust(Box::new(|api, params| {
+            Python::attach(|py| {
+                // Create the API object
+                let api = api.to_py_api()?;
+
+                // Get the __main__ module's globals
+                let main_module = py
+                    .import("__main__")
+                    .map_err(|e| format!("Failed to import __main__: {}", e))?;
+
+                let globals = main_module.dict();
+
+                // Add the API to globals as 'api'
+                globals
+                    .set_item("api", api)
+                    .map_err(|e| format!("Failed to set api in globals: {}", e))?;
+                let init_path = "./test/init.py";
+                // Read the init.py file
+                let code = std::fs::read_to_string(init_path)
+                    .map_err(|e| format!("Failed to read {}: {}", init_path, e))?;
+                let code_cstr = CString::new(code)
+                    .map_err(|e| format!("Failed to convert code to CString: {}", e))?;
+                // Execute the init.py file with the globals containing 'api'
+                py.run(code_cstr.as_c_str(), Some(&globals), None)
+                    .map_err(|e| format!("Failed to execute {}: {}", init_path, e))?;
+
+                Ok(None)
+            })
+        })),
+    );
     cmd_disp
 }
+
 fn setup_config() -> config::Config {
     let mut config = config::Config {
+        init_location: None,
         settings: HashMap::new(),
         keybinds: HashMap::new(),
         styles: HashMap::new(),

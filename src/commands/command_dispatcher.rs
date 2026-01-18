@@ -69,26 +69,10 @@ impl CommandDispatcher {
                 Python::with_gil(|py| {
                     let py_args = pythonize::pythonize(py, &args)
                         .map_err(|e| format!("Failed to convert args: {}", e))?;
-
+                    let pyapi = ctx.to_py_api()?;
                     // Create API context with raw pointer
-                    let fp_ptr = ctx.fp
-                        as *mut dyn FnMut(
-                            String,
-                            Option<ExternalCommandInput>,
-                        ) -> Result<Option<Value>, String>;
-                    let static_ptr: *mut (
-                        dyn FnMut(
-                                String,
-                                Option<ExternalCommandInput>,
-                            ) -> Result<Option<Value>, String>
-                            + 'static
-                    ) = unsafe { std::mem::transmute(fp_ptr) };
-
-                    let api = Py::new(py, ApiContext { fp_ptr: static_ptr })
-                        .map_err(|e| e.to_string())?;
-
                     let result = py_func
-                        .call1(py, (api, py_args))
+                        .call1(py, (pyapi, py_args))
                         .map_err(|e| format!("Python call failed: {}", e))?;
 
                     if result.is_none(py) {
@@ -128,6 +112,21 @@ impl<'a> CommandContext<'a> {
     ) -> Result<Option<Value>, String> {
         (self.fp)(id, params)
     }
+    pub fn to_py_api(&mut self) -> Result<Py<ApiContext>, String> {
+        Python::attach(|py| {
+            let fp_ptr = self.fp
+                as *mut dyn FnMut(
+                    String,
+                    Option<ExternalCommandInput>,
+                ) -> Result<Option<Value>, String>;
+            let static_ptr: *mut (
+                dyn FnMut(String, Option<ExternalCommandInput>) -> Result<Option<Value>, String>
+                    + 'static
+            ) = unsafe { std::mem::transmute(fp_ptr) };
+
+            Py::new(py, ApiContext { fp_ptr: static_ptr }).map_err(|e| e.to_string())
+        })
+    }
 }
 
 type CommandResult = Result<Option<Value>, String>;
@@ -144,7 +143,7 @@ pub enum CommandFunction {
     Internal(String, Option<Value>),
 }
 #[pyclass(unsendable)]
-struct ApiContext {
+pub struct ApiContext {
     fp_ptr: *mut (
         dyn FnMut(String, Option<ExternalCommandInput>) -> Result<Option<Value>, String> + 'static
     ),

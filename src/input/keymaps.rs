@@ -7,7 +7,14 @@ pub struct ActionNode {
     pub children: HashMap<Key, ActionNode>,
     pub action: Option<Token>,
 }
-
+impl ActionNode {
+    pub fn new() -> Self {
+        Self {
+            action: None,
+            children: HashMap::new()
+        }
+    }
+}
 pub trait KeymapProvider {
     fn define_keymap(&self) -> ActionNode;
 

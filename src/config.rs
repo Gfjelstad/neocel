@@ -8,6 +8,7 @@ use crossterm::{
 use crate::{engine::Engine, render::styling::hex_to_color};
 pub type CommandFn = fn(&mut Engine) -> Result<(), String>;
 pub struct Config {
+    pub init_location: Option<String>,
     pub keybinds: HashMap<KeyEvent, String>,
     pub settings: HashMap<String, String>,
     pub styles: HashMap<String, String>,
