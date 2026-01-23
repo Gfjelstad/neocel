@@ -151,7 +151,7 @@ pub enum ModeType {
     Normal,
 }
 pub struct Mode {
-    mode: ModeType,
+    pub mode: ModeType,
     keymap: Option<ActionNode>,
 }
 impl Mode {

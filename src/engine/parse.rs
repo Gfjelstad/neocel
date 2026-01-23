@@ -34,7 +34,8 @@ pub fn parse_csv_to_doc(path: PathBuf) -> Result<(DocId, Document), Box<dyn std:
 
     Ok(Document::new(
         crate::engine::DocumentData::SpreadSheet(SpreadSheetDocumentData {
-            cells: outer_map
+            cells: outer_map,
+            selected_cell: (0, 0),
         }),
         Some(path),
     ))

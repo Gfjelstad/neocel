@@ -8,7 +8,7 @@ use crossterm::event::KeyEvent;
 
 use crate::{
     engine::{Engine, WindowId, document::DocumentData},
-    render::{Rect, ScreenBuffer, Window, helpers::draw_border, styling::hex_to_color},
+    render::{Rect, ScreenBuffer, Window, helpers::draw_border, screen_buffer::Alignment, styling::hex_to_color},
 };
 
 pub struct TableWindow {
@@ -16,8 +16,8 @@ pub struct TableWindow {
 }
 impl Window for TableWindow {
     fn draw(&self, rect: &Rect, engine: &mut Engine, buffer: &mut ScreenBuffer) {
-        let bg = hex_to_color(engine.config.styles.get("foreground").unwrap().as_str()).unwrap();
-        let fg = hex_to_color(engine.config.styles.get("background").unwrap().as_str()).unwrap();
+        let fg = hex_to_color(engine.config.styles.get("foreground").unwrap().as_str()).unwrap();
+        let bg = hex_to_color(engine.config.styles.get("background").unwrap().as_str()).unwrap();
         let bg_secondary = hex_to_color(
             engine
                 .config
@@ -37,6 +37,7 @@ impl Window for TableWindow {
         );
 
         if let DocumentData::SpreadSheet(data) = &doc.data {
+            let (selected_row, selected_col) = data.selected_cell;
             let max_rows = data.cells.keys().max().copied().unwrap_or(0);
             let max_cols = data
                 .cells
@@ -70,7 +71,7 @@ impl Window for TableWindow {
             for col in 0..=max_cols {
                 let size = col_widths[&col];
                 let id = column_num_to_id(col);
-                let chars = format_cell(id.as_str(), size, Alignment::Center);
+                let chars = ScreenBuffer::format_cell(id.as_str(), size, Alignment::Center);
                 for buf_idx in loc..loc + size {
                     let cell = &mut buffer.cells[rect.y][buf_idx];
                     cell.ch = chars[buf_idx - loc];
@@ -104,14 +105,23 @@ impl Window for TableWindow {
                         raw = col.raw.clone();
                     }
 
-                    let chars = format_cell(raw.as_str(), size, Alignment::Center);
+                    let chars = ScreenBuffer::format_cell(raw.as_str(), size, Alignment::Center);
                     for buf_idx in loc..loc + size {
                         let cell = &mut buffer.cells[buf_y][buf_idx];
                         cell.ch = chars[buf_idx - loc];
                         cell.bg = color;
+                        if row == selected_row && col == selected_col {
+                            cell.attrs.push(crossterm::style::Attribute::Bold);
+                        }
                     }
+
                     buffer.cells[buf_y][loc].ch = '⎸';
                     buffer.cells[buf_y][loc].bg = color;
+                    if row == selected_row && col == selected_col {
+                        buffer.cells[buf_y][loc]
+                            .attrs
+                            .push(crossterm::style::Attribute::Bold);
+                    }
                     loc += size;
                 }
             }
@@ -133,43 +143,4 @@ fn column_num_to_id(mut col: usize) -> String {
     result.chars().rev().collect()
 }
 
-#[derive(Clone, Copy)]
-pub enum Alignment {
-    Left,
-    Center,
-    Right,
-}
 
-fn format_cell(content: &str, width: usize, align: Alignment) -> Vec<char> {
-    let mut chars = Vec::with_capacity(width);
-
-    // Truncate if too long
-    let content: String = content.chars().take(width).collect();
-    let content_len = content.len();
-
-    if content_len >= width {
-        return content.chars().collect();
-    }
-
-    let padding = width - content_len;
-
-    match align {
-        Alignment::Left => {
-            chars.extend(content.chars());
-            chars.extend(std::iter::repeat_n(' ', padding));
-        }
-        Alignment::Right => {
-            chars.extend(std::iter::repeat_n(' ', padding));
-            chars.extend(content.chars());
-        }
-        Alignment::Center => {
-            let left_pad = padding / 2;
-            let right_pad = padding - left_pad;
-            chars.extend(std::iter::repeat_n(' ', left_pad));
-            chars.extend(content.chars());
-            chars.extend(std::iter::repeat_n(' ', right_pad));
-        }
-    }
-
-    chars
-}

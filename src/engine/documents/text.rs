@@ -17,11 +17,24 @@ pub struct TextDocumentData {
     pub selected: Option<((usize, usize), (usize, usize))>,
 }
 impl DocumentDataProvider for TextDocumentData {
-    fn new(data: &str) -> Self {
+    fn new() -> Self {
         Self {
-            data: data.lines().map(|s| s.to_string()).collect(),
+            data: vec![],
             selected: None,
         }
+    }
+    fn from_raw(content: &str) -> Result<Self, String>
+        where
+            Self: Sized {
+        Ok(Self {
+            data: content.lines().map(|s| s.to_string()).collect(),
+            selected: None,
+        })
+    }
+    fn from_file(path: &str) -> Result<Self, String>
+        where
+            Self: Sized {
+        Err("not implimented".to_string())
     }
 }
 impl InsertModeProvider for TextDocumentData {

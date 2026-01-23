@@ -36,6 +36,95 @@ impl ScreenBuffer {
             ],
         }
     }
+
+    pub fn write_str(
+        &mut self,
+        row: usize,
+        start_col: usize,
+        content: &str,
+        template_cell: BufferCell,
+    ) -> (usize, usize) {
+        let size = content.len();
+        let chars: Vec<char> = content.chars().collect();
+
+        for buf_idx in start_col..start_col + size {
+            let mut val = template_cell.clone();
+            val.ch = chars[buf_idx - start_col];
+            let cell = self.get_cell_mut(row, buf_idx);
+            match cell {
+                Some(c) => *c = val,
+                _ => {}
+            }
+        }
+
+        return (row, (self.width as usize).min(start_col + size));
+    }
+
+    pub fn write_section(
+        &mut self,
+        row: usize,
+        start_col: usize,
+        width: usize,
+        align: Alignment,
+        content: &str,
+        template_cell: BufferCell,
+    ) -> (usize, usize) {
+        let chars = Self::format_cell(content, width, align);
+        self.write_str(row, start_col, &chars.iter().collect::<String>(), template_cell)
+    }
+
+    pub fn get_cell_mut(&mut self, row: usize, col: usize) -> Option<&mut BufferCell> {
+        if let Some(row_cells) = self.cells.get_mut(row) {
+            row_cells.get_mut(col)
+        } else {
+            None
+        }
+    }
+
+    pub fn format_cell(content: &str, width: usize, align: Alignment) -> Vec<char> {
+        let mut chars = Vec::with_capacity(width);
+
+        let content_chars: Vec<char> = content.chars().collect();
+        let content_len = content_chars.len();
+
+        // If content fits or is too long
+        if content_len >= width {
+            match align {
+                Alignment::Right => {
+                    // Take last `width` characters
+                    return content_chars[content_len - width..].to_vec();
+                }
+                _ => {
+                    // Take first `width` characters
+                    return content_chars[..width].to_vec();
+                }
+            }
+        }
+
+        // Content is shorter than width, add padding
+        let padding = width - content_len;
+
+        match align {
+            Alignment::Left => {
+                chars.extend(content_chars);
+                chars.extend(std::iter::repeat_n(' ', padding));
+            }
+            Alignment::Right => {
+                chars.extend(std::iter::repeat_n(' ', padding));
+                chars.extend(content_chars);
+            }
+            Alignment::Center => {
+                let left_pad = padding / 2;
+                let right_pad = padding - left_pad;
+                chars.extend(std::iter::repeat_n(' ', left_pad));
+                chars.extend(content_chars);
+                chars.extend(std::iter::repeat_n(' ', right_pad));
+            }
+        }
+
+        chars
+    }
+
     pub fn flush(&self) {
         let mut stdout = stdout();
 
@@ -55,7 +144,12 @@ impl ScreenBuffer {
         stdout.flush().unwrap();
     }
 }
-
+#[derive(Clone, Copy)]
+pub enum Alignment {
+    Left,
+    Center,
+    Right,
+}
 #[derive(Clone)]
 pub struct BufferCell {
     pub ch: char,              // the character to display

@@ -74,7 +74,7 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
     let mut command_dispatcher = setup_command_dispatcher(&config);
     let mut engine = setup_engine(config, args);
     ui.handle_events(&mut engine);
-    ui.draw(&mut engine);
+    ui.draw(&mut engine, &input_engine);
     log::info!("Successfully created engines");
     _ =command_dispatcher.dispatch(
         &CommandRequest {
@@ -100,7 +100,7 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
             break;
         }
         ui.handle_events(&mut engine);
-        ui.draw(&mut engine);
+        ui.draw(&mut engine, &input_engine);
     }
     Ok(())
 }

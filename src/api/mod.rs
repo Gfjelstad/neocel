@@ -1,4 +1,5 @@
 pub mod command_api;
+pub mod config;
 pub mod document_api;
 pub mod engine_api;
 pub mod text_document_api;

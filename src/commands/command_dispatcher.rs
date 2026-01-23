@@ -63,10 +63,10 @@ impl CommandDispatcher {
             CommandFunction::Rust(f) => f(ctx, args),
             CommandFunction::Internal(id, params) => ctx.call(
                 id.clone(),
-                Some(ExternalCommandInput::JSON(params.clone().unwrap())),
+                Some(ExternalCommandInput::JSON(params.clone().unwrap_or_default())),
             ),
             CommandFunction::Python(py_func) => {
-                Python::with_gil(|py| {
+                Python::attach(|py| {
                     let py_args = pythonize::pythonize(py, &args)
                         .map_err(|e| format!("Failed to convert args: {}", e))?;
                     let pyapi = ctx.to_py_api()?;

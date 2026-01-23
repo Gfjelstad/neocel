@@ -43,7 +43,7 @@ impl Engine {
     pub fn new(config: Config, doc: Option<(DocId, Document)>) -> Self {
         let (doc_id, doc) = match doc {
             Some(d) => d,
-            None => Document::new(DocumentData::Text(TextDocumentData::new("")), None),
+            None => Document::new(DocumentData::Text(TextDocumentData::new()), None),
         };
         let (win_id, win) = WindowState::new(doc_id.clone());
         Self {

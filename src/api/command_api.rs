@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use pyo3::{IntoPyObject, Py, PyAny, PyErr, Python, types::PyAnyMethods};
+use pyo3::{IntoPyObject, PyErr, Python, types::PyAnyMethods};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -10,7 +10,6 @@ use crate::{
         utils::try_parse,
     },
     commands::{
-        Key, build_keymap_tree,
         command_dispatcher::{CommandFunction, CommandRequest},
         insert_into_tree,
     },
@@ -84,10 +83,10 @@ impl CommandAPI {
 impl APIRegister for CommandAPI {
     fn register_methods(api: &mut super::API) {
         let mut methods: HashMap<&str, APIMethod> = HashMap::new();
-        methods.insert("command.run_command", Self::run_command);
-        methods.insert("command.register_command", Self::register_command);
+        methods.insert("command.run", Self::run_command);
+        methods.insert("command.register", Self::register_command);
         methods.insert("command.test", Self::test);
-        methods.insert("command.register_keybind", Self::register_keybind);
+        methods.insert("keybind.register", Self::register_keybind);
         api.register_api(methods);
     }
 }
@@ -119,8 +118,6 @@ fn parse_register_params(
             ExternalCommandInput::Python(obj) => Python::attach(|py| {
                 let bound_obj = obj.bind(py);
 
-                let str = bound_obj.to_string();
-
                 let res = if bound_obj.is_callable() {
                     bound_obj.call0().map_err(|e| e.to_string())?
                 } else {
@@ -141,7 +138,7 @@ fn parse_register_params(
                 let doc_type: Option<DocType> = doc_type_str
                     .map(|s| serde_json::from_value(serde_json::Value::String(s)))
                     .transpose()
-                    .map_err(|e| format!("Invalid dottype: {}", e))?;
+                    .map_err(|e| format!("Invalid doctype: {}", e))?;
 
                 let function = res
                     .get_item("function")

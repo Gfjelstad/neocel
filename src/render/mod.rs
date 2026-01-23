@@ -1,11 +1,13 @@
-use crossterm::event::KeyEvent;
-use std::collections::HashMap;
+use crossterm::{event::KeyEvent, style::Attribute};
+use std::{collections::HashMap, env, path::PathBuf};
 
 use crate::{
     config::Config,
     engine::{Engine, EngineEvent, WindowId, layout::LayoutNode, popup::RelativeTo},
+    input::input_engine::{InputEngine, ModeType},
     render::{
         screen_buffer::ScreenBuffer,
+        styling::hex_to_color,
         windows::{info::InfoWindow, table::TableWindow, text::TextWindow},
     },
 };
@@ -35,20 +37,21 @@ impl UI {
         }
     }
 
-    pub fn draw(&mut self, engine: &mut Engine) {
+    pub fn draw(&mut self, engine: &mut Engine, input_engine: &InputEngine) {
         if engine.layout.is_none() {
             return;
         }
         let (cols, rows) = crossterm::terminal::size().expect("could not get size");
         let layout = engine.layout.clone();
-        let rect = Rect {
+        let mut rect = Rect {
             x: 0,
             y: 0,
             width: cols as usize,
             height: rows as usize,
         };
+        self.draw_footer(engine, input_engine, &mut rect);
         self.draw_layout_node(engine, &rect, &layout.unwrap());
-        self.draw_popups(engine, &rect);
+        _ = self.draw_popups(engine, &rect);
         self.screen_buffer.flush();
     }
 
@@ -96,6 +99,79 @@ impl UI {
             let win = &self.windows[&window_id];
             win.draw(&rect, engine, &mut self.screen_buffer);
         }
+    }
+
+    pub fn draw_footer(
+        &mut self,
+        engine: &mut Engine,
+        input_engine: &InputEngine,
+        rect: &mut Rect,
+    ) {
+        let fg = hex_to_color(engine.config.styles.get("foreground").unwrap().as_str()).unwrap();
+        let bg = hex_to_color(engine.config.styles.get("background").unwrap().as_str()).unwrap();
+        let (w, d) = engine.get_current_window();
+        let doc_type = serde_json::to_string(&d.doc_type).unwrap();
+        let path = match &d.path {
+            Some(path) => {
+                let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+                path.strip_prefix(&cwd)
+                    .unwrap_or(path.as_path())
+                    .to_string_lossy()
+                    .to_string()
+            }
+            None => "---".to_string(),
+        };
+        let modestr = match input_engine.mode.mode {
+            ModeType::Input => "I",
+            ModeType::Normal => "N",
+            ModeType::Visualize => "V"
+        };
+
+        let mode_end = self.screen_buffer.write_section(
+            rect.height - 1,
+            0,
+            3,
+            screen_buffer::Alignment::Center,
+            modestr,
+            screen_buffer::BufferCell {
+                ch: ' ',
+                fg,
+                bg,
+                attrs: vec![],
+            },
+        );
+        self.screen_buffer.cells[mode_end.0][mode_end.1].ch = '|';
+        let path_end = self.screen_buffer.write_section(
+            mode_end.0,
+            mode_end.1 + 1,
+            20,
+            screen_buffer::Alignment::Left,
+            path.as_str(),
+            screen_buffer::BufferCell {
+                ch: ' ',
+                fg,
+                bg,
+                attrs: vec![],
+            },
+        );
+        self.screen_buffer.cells[path_end.0][path_end.1].ch = '|';
+
+        let start = self.screen_buffer.write_section(
+            rect.height - 1,
+            rect.width - 20,
+            20,
+            screen_buffer::Alignment::Right,
+            &doc_type.as_str(),
+            screen_buffer::BufferCell {
+                ch: ' ',
+                fg,
+                bg,
+                attrs: vec![],
+            },
+        );
+
+        rect.height -= 1;
     }
 
     pub fn handle_events(&mut self, engine: &mut Engine) {
