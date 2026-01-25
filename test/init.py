@@ -1,3 +1,6 @@
 import api;
 
-api.engine.printstring("HELLO FROM PYTHON")
+print(api.engine.printstring("HELLO FROM PYTHON"))
+print("engine",api.engine.engine)
+
+

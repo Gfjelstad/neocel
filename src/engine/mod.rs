@@ -18,6 +18,7 @@ use crate::{
 };
 use crossterm::event::Event;
 use crossterm::terminal;
+use pyo3::pyclass;
 use serde::{self, Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -173,7 +174,8 @@ impl KeymapProvider for Engine {
         }
     }
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone, Copy)]
+#[pyclass]
 #[serde(rename_all = "snake_case")]
 pub enum SplitDirection {
     Up,
