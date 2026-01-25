@@ -20,13 +20,13 @@ use crate::{
 pub struct CommandAPI {}
 
 impl CommandAPI {
-    pub fn run_command(state: &mut APIMethodParams) -> APIMethodResult {
-        let command = try_parse::<RunCommandParams>(&state.params)?.command;
+    // pub fn run_command(state: &mut APIMethodParams) -> APIMethodResult {
+    //     let command = try_parse::<RunCommandParams>(&state.params)?.command;
 
-        state
-            .command_dispatch
-            .dispatch(&command, state.engine, state.input_engine, state.ui)
-    }
+    //     state
+    //         .command_dispatch
+    //         .dispatch(&command, state.engine, state.input_engine, state.ui)
+    // }
 
     pub fn test(state: &mut APIMethodParams) -> APIMethodResult {
         println!("HELLO FROM THE API");
@@ -83,7 +83,7 @@ impl CommandAPI {
 impl APIRegister for CommandAPI {
     fn register_methods(api: &mut super::API) {
         let mut methods: HashMap<&str, APIMethod> = HashMap::new();
-        methods.insert("command.run", Self::run_command);
+        // methods.insert("command.run", Self::run_command);
         methods.insert("command.register", Self::register_command);
         methods.insert("command.test", Self::test);
         methods.insert("keybind.register", Self::register_keybind);

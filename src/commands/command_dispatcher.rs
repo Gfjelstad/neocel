@@ -1,13 +1,18 @@
 use crate::{
-    api::{API, APICaller, ExternalCommandInput},
+    api::{API, API2, APICaller, ExternalCommandInput},
     engine::{Engine, document::DocType},
     input::input_engine::InputEngine,
     render::UI,
 };
-use pyo3::{ffi::PyCFunction, prelude::*, types::PyDict};
+use pyo3::{exceptions::PyTypeError, ffi::PyCFunction, prelude::*, types::PyDict};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 impl CommandDispatcher {
     pub fn new() -> Self {
@@ -28,64 +33,162 @@ impl CommandDispatcher {
             .insert(id.to_string(), Rc::new(RefCell::new(func)));
     }
 
-    pub fn dispatch(
-        &mut self,
+    pub fn dispatchV2(
         cmd: &CommandRequest,
-        engine: &mut Engine,
-        input_engine: &mut InputEngine,
-        ui: &mut UI,
+        this: Arc<Mutex<Self>>,
+        engine: Arc<Mutex<Engine>>,
     ) -> Result<Option<Value>, String> {
-        let doc_type = &engine.get_current_window().1.doc_type.clone();
-        let selected_command = self
+        let doc_type = engine
+            .lock()
+            .unwrap()
+            .get_current_window()
+            .1
+            .doc_type
+            .clone();
+
+        let guarded_self = this.lock().unwrap();
+
+        let selected_command = guarded_self
             .per_document
-            .get(doc_type)
+            .get(&doc_type)
             .and_then(|m| m.get(&cmd.id))
             .cloned()
-            .or_else(|| self.global.get(&cmd.id).cloned())
+            .or_else(|| guarded_self.global.get(&cmd.id).cloned())
             .ok_or_else(|| format!("Command not found: {}", cmd.id))?;
 
-        let mut api = API::new();
+        drop(guarded_self);
 
-        api.run_command(engine, input_engine, ui, self, move |caller| {
-            let mut ctx = CommandContext { fp: caller };
-            let mut cmd_fn = selected_command.borrow_mut();
+        let mut api = API2::new(engine, this);
 
-            Self::call_command_func(&mut cmd_fn, &mut ctx, cmd.args.clone())
-        })
-    }
+        let func = &mut *selected_command.borrow_mut();
 
-    fn call_command_func(
-        func: &mut CommandFunction,
-        ctx: &mut CommandContext,
-        args: Vec<Value>,
-    ) -> CommandResult {
-        match func {
-            CommandFunction::Rust(f) => f(ctx, args),
-            CommandFunction::Internal(id, params) => ctx.call(
-                id.clone(),
-                Some(ExternalCommandInput::JSON(params.clone().unwrap_or_default())),
-            ),
+        let mut res: CommandResult = match func {
+            CommandFunction::Rust(f) => f(&mut api, cmd.args.clone()),
+            CommandFunction::Internal(id, params) => Ok(None),
             CommandFunction::Python(py_func) => {
-                Python::attach(|py| {
-                    let py_args = pythonize::pythonize(py, &args)
+                let _ = Python::attach(|py| {
+                    let py_args = pythonize::pythonize(py, &cmd.args)
                         .map_err(|e| format!("Failed to convert args: {}", e))?;
-                    let pyapi = ctx.to_py_api()?;
+                    // let pyapi = ctx.to_py_api()?;
+                    let module = api.to_module(py).map_err(|e| e.to_string())?;
+
+                    py.import("sys")
+                        .map_err(|e| e.to_string())?
+                        .getattr("modules")
+                        .map_err(|e| e.to_string())?
+                        .set_item("api", module.clone())
+                        .map_err(|e| e.to_string())?;
                     // Create API context with raw pointer
                     let result = py_func
-                        .call1(py, (pyapi, py_args))
+                        .call1(py, (module, py_args))
                         .map_err(|e| format!("Python call failed: {}", e))?;
 
                     if result.is_none(py) {
                         Ok(None)
                     } else {
-                        pythonize::depythonize(result.bind(py))
+                        pythonize::depythonize::<Option<Value>>(result.bind(py))
                             .map(Some)
                             .map_err(|e| format!("Failed to deserialize result: {}", e))
                     }
-                })
+                });
+                return Ok(None);
             }
-        }
+        };
+
+        return res;
     }
+
+    // pub fn dispatch(
+    //     &mut self,
+    //     cmd: &CommandRequest,
+    //     engine: &mut Engine,
+    //     input_engine: &mut InputEngine,
+    //     ui: &mut UI,
+    // ) -> Result<Option<Value>, String> {
+    //     let doc_type = &engine.get_current_window().1.doc_type.clone();
+    //     let selected_command = self
+    //         .per_document
+    //         .get(doc_type)
+    //         .and_then(|m| m.get(&cmd.id))
+    //         .cloned()
+    //         .or_else(|| self.global.get(&cmd.id).cloned())
+    //         .ok_or_else(|| format!("Command not found: {}", cmd.id))?;
+
+    //     let mut api = API::new();
+
+    //     api.run_command(engine, input_engine, ui, self, move |caller| {
+    //         let mut ctx = CommandContext { fp: caller };
+    //         let mut cmd_fn = selected_command.borrow_mut();
+
+    //         Self::call_command_func(&mut cmd_fn, &mut ctx, cmd.args.clone())
+    //     })
+    // }
+
+    // fn call_command_func2(
+    //     func: &mut CommandFunction,
+    //     ctx: &mut CommandContext,
+    //     args: Vec<Value>,
+    // ) -> CommandResult {
+    //     match func {
+    //         CommandFunction::Rust(f) => f(ctx, args),
+    //         CommandFunction::Internal(id, params) => ctx.call(
+    //             id.clone(),
+    //             Some(ExternalCommandInput::JSON(params.clone().unwrap_or_default())),
+    //         ),
+    //         CommandFunction::Python(py_func) => {
+    //             Python::attach(|py| {
+    //                 let py_args = pythonize::pythonize(py, &args)
+    //                     .map_err(|e| format!("Failed to convert args: {}", e))?;
+    //                 let pyapi = ctx.to_py_api()?;
+    //                 // Create API context with raw pointer
+    //                 let result = py_func
+    //                     .call1(py, (pyapi, py_args))
+    //                     .map_err(|e| format!("Python call failed: {}", e))?;
+
+    //                 if result.is_none(py) {
+    //                     Ok(None)
+    //                 } else {
+    //                     pythonize::depythonize(result.bind(py))
+    //                         .map(Some)
+    //                         .map_err(|e| format!("Failed to deserialize result: {}", e))
+    //                 }
+    //             })
+    //         }
+    //     }
+    // }
+
+    // fn call_command_func(
+    //     func: &mut CommandFunction,
+    //     ctx: &mut CommandContext,
+    //     args: Vec<Value>,
+    // ) -> CommandResult {
+    //     match func {
+    //         CommandFunction::Rust(f) => f(ctx, args),
+    //         CommandFunction::Internal(id, params) => ctx.call(
+    //             id.clone(),
+    //             Some(ExternalCommandInput::JSON(params.clone().unwrap_or_default())),
+    //         ),
+    //         CommandFunction::Python(py_func) => {
+    //             Python::attach(|py| {
+    //                 let py_args = pythonize::pythonize(py, &args)
+    //                     .map_err(|e| format!("Failed to convert args: {}", e))?;
+    //                 let pyapi = ctx.to_py_api()?;
+    //                 // Create API context with raw pointer
+    //                 let result = py_func
+    //                     .call1(py, (pyapi, py_args))
+    //                     .map_err(|e| format!("Python call failed: {}", e))?;
+
+    //                 if result.is_none(py) {
+    //                     Ok(None)
+    //                 } else {
+    //                     pythonize::depythonize(result.bind(py))
+    //                         .map(Some)
+    //                         .map_err(|e| format!("Failed to deserialize result: {}", e))
+    //                 }
+    //             })
+    //         }
+    //     }
+    // }
 }
 
 impl Default for CommandDispatcher {
@@ -131,6 +234,7 @@ impl<'a> CommandContext<'a> {
 
 type CommandResult = Result<Option<Value>, String>;
 type CommandFn = dyn FnMut(&mut CommandContext, Vec<Value>) -> CommandResult;
+type CommandFn2 = dyn FnMut(&mut API2, Vec<Value>) -> CommandResult;
 
 pub struct CommandDispatcher {
     pub global: HashMap<String, CommandHandle>,
@@ -138,10 +242,22 @@ pub struct CommandDispatcher {
 }
 pub type CommandHandle = Rc<RefCell<CommandFunction>>;
 pub enum CommandFunction {
-    Rust(Box<CommandFn>),
+    Rust(Box<CommandFn2>),
     Python(Py<PyAny>),
     Internal(String, Option<Value>),
 }
+
+impl<'a, 'py> FromPyObject<'a, 'py> for CommandFunction {
+    type Error = PyErr;
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        if obj.is_callable() {
+            Ok(CommandFunction::Python(obj.into()))
+        } else {
+            Err(PyTypeError::new_err("Expected a callable"))
+        }
+    }
+}
+
 #[pyclass(unsendable)]
 pub struct ApiContext {
     fp_ptr: *mut (

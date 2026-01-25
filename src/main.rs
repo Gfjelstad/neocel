@@ -5,6 +5,7 @@ use std::{
     fs::File,
     io::{Write, stdout},
     path::PathBuf,
+    sync::{Arc, Mutex},
 };
 
 use crossterm::{
@@ -25,7 +26,6 @@ pub mod config;
 pub mod engine;
 pub mod input;
 pub mod render;
-
 use crate::{
     commands::command_dispatcher::{
         ApiContext, CommandDispatcher, CommandFunction, CommandRequest,
@@ -35,6 +35,7 @@ use crate::{
     input::input_engine::InputEngine,
     render::UI,
 };
+
 fn main() -> Result<(), String> {
     init_logger();
     let mut _args: Vec<String> = env::args().collect();
@@ -71,36 +72,44 @@ fn main_loop(args: Vec<String>) -> Result<(), String> {
     let config = setup_config();
     let mut ui = setup_ui(&config);
     let mut input_engine = setup_input_engine(&config);
-    let mut command_dispatcher = setup_command_dispatcher(&config);
-    let mut engine = setup_engine(config, args);
-    ui.handle_events(&mut engine);
-    ui.draw(&mut engine, &input_engine);
-    log::info!("Successfully created engines");
-    _ =command_dispatcher.dispatch(
+    let mut command_dispatcher = Arc::new(Mutex::new(setup_command_dispatcher(&config)));
+    let engine = Arc::new(Mutex::new(setup_engine(config, args)));
+    {
+        let mut_engine = &mut *engine.lock().unwrap();
+        ui.handle_events(mut_engine);
+        ui.draw(mut_engine, &input_engine);
+        log::info!("Successfully created engines");
+    }
+    _ = CommandDispatcher::dispatchV2(
         &CommandRequest {
             id: "init".to_string(),
             args: vec![],
         },
-        &mut engine,
-        &mut input_engine,
-        &mut ui,
+        command_dispatcher.clone(),
+        engine.clone(),
     );
-    // initial commands before awaiting an input;
     loop {
-        if let Some(key) = engine.process_input()?
-            && let Some(cmd) = input_engine.feed(key, &mut engine)?
-        {
-            let res = command_dispatcher.dispatch(&cmd, &mut engine, &mut input_engine, &mut ui);
-            match res {
-                Ok(_) => log::info!("OK running command {:?}", cmd.id),
-                Err(err) => log::warn!("failed running command {:?}: {:?}", cmd.id, err),
-            }
-        }
-        if engine.should_quit {
+        let mut engine_guard = engine.lock().unwrap();
+
+        let command = if let Some(key) = engine_guard.process_input()? {
+            input_engine.feed(key, &mut *engine_guard)?
+        } else {
+            None
+        };
+
+        if engine_guard.should_quit {
             break;
         }
-        ui.handle_events(&mut engine);
-        ui.draw(&mut engine, &input_engine);
+
+        ui.handle_events(&mut *engine_guard);
+        drop(engine_guard);
+
+        if let Some(cmd) = command {
+            _ = CommandDispatcher::dispatchV2(&cmd,command_dispatcher.clone(), engine.clone());
+        }
+
+        let mut engine_guard = engine.lock().unwrap();
+        ui.draw(&mut *engine_guard, &input_engine);
     }
     Ok(())
 }
@@ -117,7 +126,10 @@ fn setup_command_dispatcher(_config: &Config) -> CommandDispatcher {
         CommandFunction::Rust(Box::new(|api, params| {
             Python::attach(|py| {
                 // Create the API object
-                let api = api.to_py_api()?;
+                // let api = api.to_py_api()?;
+                let module = api.to_module(py).map_err(|e| e.to_string())?;
+
+                
 
                 // Get the __main__ module's globals
                 let main_module = py
@@ -127,9 +139,15 @@ fn setup_command_dispatcher(_config: &Config) -> CommandDispatcher {
                 let globals = main_module.dict();
 
                 // Add the API to globals as 'api'
-                globals
-                    .set_item("api", api)
-                    .map_err(|e| format!("Failed to set api in globals: {}", e))?;
+                // globals
+                //     .set_item("api", api)
+                //     .map_err(|e| format!("Failed to set api in globals: {}", e))?;
+                py.import("sys")
+                    .map_err(|e| e.to_string())?
+                    .getattr("modules")
+                    .map_err(|e| e.to_string())?
+                    .set_item("api", module.clone())
+                    .map_err(|e| e.to_string())?;
                 let init_path = "./test/init.py";
                 // Read the init.py file
                 let code = std::fs::read_to_string(init_path)
