@@ -6,9 +6,9 @@ use crossterm::{
     style::{Attribute, Color, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor},
 };
 
-use crate::{config::Config, render::styling::hex_to_color};
+use crate::{config::Config};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ScreenBuffer {
     pub width: u16,
     pub height: u16,
@@ -24,10 +24,8 @@ impl ScreenBuffer {
                 vec![
                     BufferCell {
                         ch: ' ',
-                        bg: hex_to_color(config.styles["background"].as_str())
-                            .unwrap_or(Color::Black),
-                        fg: hex_to_color(config.styles["foreground"].as_str())
-                            .unwrap_or(Color::Red),
+                        bg: config.theme.background,
+                        fg: config.theme.foreground,
                         attrs: vec![],
                     };
                     usize::from(width)
@@ -150,7 +148,7 @@ pub enum Alignment {
     Center,
     Right,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BufferCell {
     pub ch: char,              // the character to display
     pub fg: Color,             // foreground color

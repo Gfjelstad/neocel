@@ -4,16 +4,14 @@ use std::{collections::HashMap, env, path::PathBuf};
 use crate::{
     config::Config,
     engine::{Engine, EngineEvent, WindowId, layout::LayoutNode, popup::RelativeTo},
-    input::input_engine::{InputEngine, ModeType},
+    input::input_engine::{InputEngine, Mode},
     render::{
-        screen_buffer::ScreenBuffer,
-        styling::hex_to_color,
+        screen_buffer::{BufferCell, ScreenBuffer},
         windows::{info::InfoWindow, table::TableWindow, text::TextWindow},
     },
 };
 pub mod helpers;
 pub mod screen_buffer;
-pub mod styling;
 pub mod windows;
 
 #[derive(Clone, Copy)]
@@ -42,6 +40,20 @@ impl UI {
             return;
         }
         let (cols, rows) = crossterm::terminal::size().expect("could not get size");
+        
+        self.screen_buffer.cells =  vec![
+                vec![
+                    BufferCell {
+                        ch: ' ',
+                        bg: engine.config.theme.background,
+                        fg: engine.config.theme.foreground,
+                        attrs: vec![],
+                    };
+                    usize::from(cols)
+                ];
+                usize::from(rows)
+            ];
+        
         let layout = engine.layout.clone();
         let mut rect = Rect {
             x: 0,
@@ -63,12 +75,7 @@ impl UI {
             let relative_to = popup.relative_to.clone();
 
             let rect = match relative_to {
-                RelativeTo::Editor => Ok(Rect {
-                    width: popup.width,
-                    height: popup.height,
-                    x: 0,
-                    y: 0,
-                }),
+                RelativeTo::Editor => Ok(rect.clone()),
                 RelativeTo::Win(win_id) => wins
                     .get(&win_id)
                     .cloned()
@@ -107,8 +114,8 @@ impl UI {
         input_engine: &InputEngine,
         rect: &mut Rect,
     ) {
-        let fg = hex_to_color(engine.config.styles.get("foreground").unwrap().as_str()).unwrap();
-        let bg = hex_to_color(engine.config.styles.get("background").unwrap().as_str()).unwrap();
+        let fg = engine.config.theme.foreground;
+        let bg = engine.config.theme.background;
         let (w, d) = engine.get_current_window();
         let doc_type = serde_json::to_string(&d.doc_type).unwrap();
         let path = match &d.path {
@@ -122,10 +129,10 @@ impl UI {
             }
             None => "---".to_string(),
         };
-        let modestr = match input_engine.mode.mode {
-            ModeType::Input => "I",
-            ModeType::Normal => "N",
-            ModeType::Visualize => "V"
+        let modestr = match input_engine.mode() {
+            Mode::Input => "I",
+            Mode::Normal => "N",
+            Mode::Visualize => "V"
         };
 
         let mode_end = self.screen_buffer.write_section(

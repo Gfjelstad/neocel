@@ -4,23 +4,24 @@ use std::{
 };
 
 use csv::ReaderBuilder;
+use pyo3::pyclass;
 use serde::Serialize;
 
-use crate::engine::{
+use crate::{engine::{
     WindowState,
     documents::{DocumentDataProvider, InsertModeProvider},
-};
+}, input::keymaps::Key};
 
 #[derive(Debug, Serialize)]
 pub struct SpreadSheetDocumentData {
     pub cells: HashMap<usize, HashMap<usize, Cell>>,
-    pub selected_cell: (usize, usize),
+    // pub selected_cell: (usize, usize),
 }
 impl DocumentDataProvider for SpreadSheetDocumentData {
     fn new() -> Self {
         Self {
             cells: HashMap::new(),
-            selected_cell: (0, 0),
+            // selected_cell: (1, 1),
         }
     }
 
@@ -31,7 +32,7 @@ impl DocumentDataProvider for SpreadSheetDocumentData {
         let mut outer_map: HashMap<usize, HashMap<usize, Cell>> = HashMap::new();
 
         for (row_idx, result) in reader.records().enumerate() {
-            let record = result.map_err(|e|e.to_string())?;
+            let record = result.map_err(|e| e.to_string())?;
             let mut inner_map: HashMap<usize, Cell> = HashMap::new();
 
             for (col_idx, field) in record.iter().enumerate() {
@@ -51,19 +52,19 @@ impl DocumentDataProvider for SpreadSheetDocumentData {
         }
         Ok(Self {
             cells: outer_map,
-            selected_cell: (0, 0),
+            // selected_cell: (0, 0),
         })
     }
 
     fn from_raw(content: &str) -> Result<Self, String> {
         let mut reader = ReaderBuilder::new()
-        .has_headers(false)
-        .from_reader(content.as_bytes());
+            .has_headers(false)
+            .from_reader(content.as_bytes());
 
         let mut outer_map: HashMap<usize, HashMap<usize, Cell>> = HashMap::new();
 
         for (row_idx, result) in reader.records().enumerate() {
-            let record = result.map_err(|e|e.to_string())?;
+            let record = result.map_err(|e| e.to_string())?;
             let mut inner_map: HashMap<usize, Cell> = HashMap::new();
 
             for (col_idx, field) in record.iter().enumerate() {
@@ -83,7 +84,7 @@ impl DocumentDataProvider for SpreadSheetDocumentData {
         }
         Ok(Self {
             cells: outer_map,
-            selected_cell: (0, 0),
+            // selected_cell: (0, 0),
         })
     }
 }
@@ -91,14 +92,15 @@ impl InsertModeProvider for SpreadSheetDocumentData {
     fn handle_key(
         &mut self,
         window: &mut WindowState,
-        key: crate::commands::Key,
+        key: Key,
     ) -> Result<(), String> {
         Ok(())
     }
 }
 pub type CellId = String;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
+#[pyclass]
 pub struct Cell {
     pub raw: String,
     pub value: CellValue,
@@ -107,7 +109,19 @@ pub struct Cell {
     pub used_by: HashSet<CellId>,
 }
 
-#[derive(Debug, Serialize)]
+impl Default for Cell {
+    fn default() -> Self {
+        Cell {
+            raw: String::new(),
+            value: CellValue::Empty,
+            ast: None,
+            dependencies: HashSet::new(),
+            used_by: HashSet::new(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub enum CellValue {
     Empty,
     Number(f64),
@@ -131,5 +145,5 @@ impl CellValue {
         }
     }
 }
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Expr {}

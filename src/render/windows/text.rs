@@ -12,8 +12,8 @@ pub struct TextWindow {
 impl Window for TextWindow {
     fn draw(&self, rect: &Rect, engine: &mut Engine, buffer: &mut ScreenBuffer) {
         // Draw the border first
-        let bg = engine.config.get_style_color("background", None);
-        let fg = engine.config.get_style_color("foreground", None);
+        let bg = engine.config.theme.background;
+        let fg = engine.config.theme.foreground;
         // Get window state and document
         let (window, doc) = engine.get_window(&self.window_id);
         let focussed = self.window_id == window.id;

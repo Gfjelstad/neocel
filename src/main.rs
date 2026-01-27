@@ -4,7 +4,7 @@ use std::{
     ffi::CString,
     fs::File,
     io::{Write, stdout},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -17,8 +17,9 @@ use crossterm::{
 use log::LevelFilter;
 use pyo3::{
     Py, Python,
-    types::{PyAnyMethods, PyModuleMethods},
+    types::{PyAnyMethods, PyList, PyListMethods, PyModuleMethods},
 };
+use serde_json::json;
 use simplelog::WriteLogger;
 pub mod api;
 pub mod commands;
@@ -27,10 +28,8 @@ pub mod engine;
 pub mod input;
 pub mod render;
 use crate::{
-    commands::command_dispatcher::{
-        ApiContext, CommandDispatcher, CommandFunction, CommandRequest,
-    },
-    config::Config,
+    commands::command_dispatcher::{CommandDispatcher, CommandFunction, CommandRequest},
+    config::{Config, Theme},
     engine::{Engine, parse::parse_csv_to_doc},
     input::input_engine::InputEngine,
     render::UI,
@@ -70,46 +69,59 @@ fn main() -> Result<(), String> {
 
 fn main_loop(args: Vec<String>) -> Result<(), String> {
     let config = setup_config();
-    let mut ui = setup_ui(&config);
-    let mut input_engine = setup_input_engine(&config);
-    let mut command_dispatcher = Arc::new(Mutex::new(setup_command_dispatcher(&config)));
+    let input_engine = Arc::new(Mutex::new(setup_input_engine(&config)));
+    let command_dispatcher = Arc::new(Mutex::new(setup_command_dispatcher(&config)));
     let engine = Arc::new(Mutex::new(setup_engine(config, args)));
-    {
-        let mut_engine = &mut *engine.lock().unwrap();
-        ui.handle_events(mut_engine);
-        ui.draw(mut_engine, &input_engine);
-        log::info!("Successfully created engines");
-    }
-    _ = CommandDispatcher::dispatchV2(
+
+    _ = CommandDispatcher::dispatch(
         &CommandRequest {
             id: "init".to_string(),
             args: vec![],
         },
         command_dispatcher.clone(),
         engine.clone(),
-    );
+        input_engine.clone(),
+    )
+    .map_err(|e| log::error!("Failed to initialize: {}", e));
+
+    let mut ui = setup_ui(&engine.lock().unwrap().config);
+    {
+        let mut_engine = &mut *engine.lock().unwrap();
+        let mut_input_engine = &mut *input_engine.lock().unwrap();
+        ui.handle_events(mut_engine);
+        ui.draw(mut_engine, mut_input_engine);
+        log::info!("Successfully created engines");
+    }
+
     loop {
         let mut engine_guard = engine.lock().unwrap();
+        let mut input_engine_guard = input_engine.lock().unwrap();
 
         let command = if let Some(key) = engine_guard.process_input()? {
-            input_engine.feed(key, &mut *engine_guard)?
+            input_engine_guard.feed(key, &mut *engine_guard)?
         } else {
             None
         };
-
-        if engine_guard.should_quit {
-            break;
-        }
-
-        ui.handle_events(&mut *engine_guard);
         drop(engine_guard);
+        drop(input_engine_guard);
 
         if let Some(cmd) = command {
-            _ = CommandDispatcher::dispatchV2(&cmd,command_dispatcher.clone(), engine.clone());
+            _ = CommandDispatcher::dispatch(
+                &cmd,
+                command_dispatcher.clone(),
+                engine.clone(),
+                input_engine.clone(),
+            )
+            .map_err(|e| log::error!("Failed to run command: {} | {}", cmd.id.clone(), e));
         }
 
         let mut engine_guard = engine.lock().unwrap();
-        ui.draw(&mut *engine_guard, &input_engine);
+        if engine_guard.should_quit {
+            break;
+        }
+        ui.handle_events(&mut *engine_guard);
+        let mut input_engine_guard = input_engine.lock().unwrap();
+        ui.draw(&mut *engine_guard, &mut *input_engine_guard);
     }
     Ok(())
 }
@@ -129,8 +141,6 @@ fn setup_command_dispatcher(_config: &Config) -> CommandDispatcher {
                 // let api = api.to_py_api()?;
                 let module = api.to_module(py).map_err(|e| e.to_string())?;
 
-                
-
                 // Get the __main__ module's globals
                 let main_module = py
                     .import("__main__")
@@ -141,14 +151,24 @@ fn setup_command_dispatcher(_config: &Config) -> CommandDispatcher {
                 // Add the API to globals as 'api'
                 // globals
                 //     .set_item("api", api)
+                let sys = py.import("sys").map_err(|e| e.to_string())?;
                 //     .map_err(|e| format!("Failed to set api in globals: {}", e))?;
-                py.import("sys")
-                    .map_err(|e| e.to_string())?
+               sys
                     .getattr("modules")
                     .map_err(|e| e.to_string())?
                     .set_item("api", module.clone())
                     .map_err(|e| e.to_string())?;
+
                 let init_path = "./test/init.py";
+                let script_dir = Path::new(init_path)
+                    .parent()
+                    .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("Invalid script path")).map_err(|e|e.to_string())?
+                    .to_str()
+                    .ok_or_else(|| pyo3::exceptions::PyValueError::new_err("Non-UTF8 path")).map_err(|e|e.to_string())?;
+
+
+                sys.getattr("path").map_err(|e| e.to_string())?.cast::<PyList>().map_err(|e| e.to_string())?.insert(0, script_dir).map_err(|e| e.to_string())?;
+
                 // Read the init.py file
                 let code = std::fs::read_to_string(init_path)
                     .map_err(|e| format!("Failed to read {}: {}", init_path, e))?;
@@ -169,19 +189,12 @@ fn setup_config() -> config::Config {
     let mut config = config::Config {
         init_location: None,
         settings: HashMap::new(),
-        keybinds: HashMap::new(),
-        styles: HashMap::new(),
-        commands: HashMap::new(),
+        theme: Theme::try_from(json!({
+            "background":"#000000",
+            "foreground":"#FFFFFF"
+        }))
+        .expect("could not parse default theme"),
     };
-    config
-        .styles
-        .insert("background".to_string(), "#1D1D1D".to_string());
-    config
-        .styles
-        .insert("background_secondary".to_string(), "#353535".to_string());
-    config
-        .styles
-        .insert("foreground".to_string(), "#F54927".to_string());
 
     config
 }

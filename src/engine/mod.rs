@@ -5,7 +5,7 @@ pub mod layout;
 pub mod parse;
 pub mod popup;
 use crate::{
-    commands::{Key, command_dispatcher::CommandRequest},
+    commands::{ command_dispatcher::CommandRequest},
     config::Config,
     engine::{
         document::{DocId, Document, DocumentData},
@@ -13,7 +13,7 @@ use crate::{
         layout::LayoutNode,
         popup::PopupWindow,
     },
-    input::keymaps::{ActionNode, KeymapProvider},
+    input::keymaps::{ActionNode, Key},
     render::{Rect, helpers::BorderStyle},
 };
 use crossterm::event::Event;
@@ -35,7 +35,6 @@ pub struct Engine {
     pub popups: Option<PopupWindow>,
     pub config: Config,
 
-    pub keymap: Option<ActionNode>,
     pub should_quit: bool,
 
     subscriptions: HashMap<EngineEventKind, Vec<EngineEventCallback>>,
@@ -51,7 +50,6 @@ impl Engine {
             events: vec![EngineEvent::WindowCreate(win_id.clone())],
             windows: HashMap::from([(win_id.clone(), win)]),
             popups: None,
-            keymap: None,
             should_quit: false,
             active_window: win_id.clone(),
             config,
@@ -123,7 +121,7 @@ impl Engine {
                 Ok(None)
             }
             Event::Key(key_event) => {
-                let converted = crate::commands::Key::from(key_event);
+                let converted = Key::from(key_event);
 
                 Ok(Some(converted))
             }
@@ -133,48 +131,22 @@ impl Engine {
         // Normalize
     }
 }
-impl KeymapProvider for Engine {
-    fn get_keymap_cache(&self) -> &Option<crate::input::keymaps::ActionNode> {
-        &self.keymap
-    }
-    fn set_keymap_cache(&mut self, value: Option<crate::input::keymaps::ActionNode>) {
-        self.keymap = value;
-    }
-    fn define_keymap(&self) -> crate::input::keymaps::ActionNode {
-        let mut keymap: HashMap<Key, ActionNode> = HashMap::new();
-        keymap.insert(
-            Key {
-                code: crate::commands::KeyCode::Char('q'),
-                modifiers: crate::commands::Modifiers::CTRL,
-            },
-            ActionNode {
-                children: HashMap::new(),
-                action: Some(crate::input::Token::Command(CommandRequest {
-                    id: "buffer.close".to_string(),
-                    args: vec![],
-                })),
-            },
-        );
-        keymap.insert(
-            Key {
-                code: crate::commands::KeyCode::Char('c'),
-                modifiers: crate::commands::Modifiers::CTRL,
-            },
-            ActionNode {
-                children: HashMap::new(),
-                action: Some(crate::input::Token::Command(CommandRequest {
-                    id: "kill".to_string(),
-                    args: vec![],
-                })),
-            },
-        );
-        ActionNode {
-            children: keymap,
-            action: None,
-        }
-    }
-}
-#[derive(Deserialize, Clone, Copy)]
+// impl KeymapProvider for Engine {
+//     fn get_keymap_cache(&self) -> &Option<crate::input::keymaps::ActionNode> {
+//         &self.keymap
+//     }
+//     fn set_keymap_cache(&mut self, value: Option<crate::input::keymaps::ActionNode>) {
+//         self.keymap = value;
+//     }
+//     fn define_keymap(&self) -> crate::input::keymaps::ActionNode {
+//         let mut keymap: HashMap<Key, ActionNode> = HashMap::new();
+//         ActionNode {
+//             children: keymap,
+//             action: None,
+//         }
+//     }
+// }
+#[derive(Deserialize, Clone, Copy, Debug)]
 #[pyclass]
 #[serde(rename_all = "snake_case")]
 pub enum SplitDirection {
@@ -226,8 +198,6 @@ pub struct WindowState {
     pub scroll_rows: usize,
     pub scroll_cols: usize,
     pub border_style: Option<BorderStyle>,
-    #[serde(skip)]
-    pub keymap: Option<ActionNode>,
 }
 impl WindowState {
     pub fn new(doc_id: DocId) -> (WindowId, WindowState) {
@@ -237,7 +207,6 @@ impl WindowState {
             Self {
                 id,
                 doc_id,
-                keymap: None,
                 cursor_row: 0,
                 cursor_col: 0,
                 scroll_rows: 0,
@@ -248,31 +217,3 @@ impl WindowState {
     }
 }
 
-impl KeymapProvider for WindowState {
-    fn get_keymap_cache(&self) -> &Option<crate::input::keymaps::ActionNode> {
-        &self.keymap
-    }
-    fn set_keymap_cache(&mut self, value: Option<crate::input::keymaps::ActionNode>) {
-        self.keymap = value;
-    }
-    fn define_keymap(&self) -> crate::input::keymaps::ActionNode {
-        let mut keymap: HashMap<Key, ActionNode> = HashMap::new();
-        keymap.insert(
-            Key {
-                code: crate::commands::KeyCode::Char('q'),
-                modifiers: crate::commands::Modifiers::CTRL,
-            },
-            ActionNode {
-                children: HashMap::new(),
-                action: Some(crate::input::Token::Command(CommandRequest {
-                    id: "buffer.close".to_string(),
-                    args: vec![],
-                })),
-            },
-        );
-        ActionNode {
-            children: keymap,
-            action: None,
-        }
-    }
-}

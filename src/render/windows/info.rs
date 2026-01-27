@@ -11,8 +11,8 @@ pub struct InfoWindow {
 impl Window for InfoWindow {
     fn draw(&self, rect: &Rect, engine: &mut Engine, buffer: &mut ScreenBuffer) {
         // Draw border; focused if this window is active
-        let fg = engine.config.get_style_color("foreground", None);
-        let bg = engine.config.get_style_color("background", None);
+        let fg = engine.config.theme.foreground;
+        let bg = engine.config.theme.background;
         let (win, doc) = engine.get_window(&self.window_id);
         let inner_rect = draw_border(
             &self.window_id,

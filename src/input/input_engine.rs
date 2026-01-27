@@ -1,11 +1,12 @@
 use crate::{
-    commands::{Key, KeyCode, Modifiers, command_dispatcher::CommandRequest},
-    engine::Engine,
+    commands::command_dispatcher::CommandRequest,
+    engine::{Engine, document::{DocId, DocType}},
     input::{
         Token,
-        keymaps::{ActionNode, KeymapProvider},
+        keymaps::{ActionNode, Key, KeyCode, Modifiers},
     },
 };
+use pyo3::pyclass;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -13,7 +14,11 @@ use std::collections::HashMap;
 pub struct InputEngine {
     active_nodes: Vec<Option<ActionNode>>,
     pending: PendingState,
-    pub mode: Mode,
+    mode: Mode,
+
+    pub global_map: HashMap<Mode, ActionNode>,
+    pub document_map: HashMap<DocId, HashMap<Mode, ActionNode>>,
+    pub doctype_map: HashMap<DocType, HashMap<Mode, ActionNode>>
 }
 
 impl InputEngine {
@@ -21,7 +26,11 @@ impl InputEngine {
         Self {
             active_nodes: vec![],
             pending: PendingState::new(),
-            mode: Mode::new(ModeType::Input),
+            mode: Mode::Input,
+
+            global_map: HashMap::new(),
+            document_map: HashMap::new(),
+            doctype_map: HashMap::new()
         }
     }
     pub fn feed(
@@ -31,7 +40,7 @@ impl InputEngine {
     ) -> Result<Option<CommandRequest>, String> {
         // get potential token from key, match on token to fill out pending state, on motion or
         // command, emit command to command_dispatcher
-        if let ModeType::Input = self.mode.mode {
+        if let Mode::Input = self.mode {
             if !(key.code == KeyCode::Esc
                 || key.modifiers.contains(Modifiers::CTRL)
                 || key.modifiers.contains(Modifiers::ALT))
@@ -42,7 +51,7 @@ impl InputEngine {
                     return Ok(None);
                 }
             } else if key.code == KeyCode::Esc {
-                self.mode.mode = ModeType::Normal;
+                self.mode = Mode::Normal;
                 self.reset();
             }
         }
@@ -88,17 +97,40 @@ impl InputEngine {
         })
     }
 
-    fn current_keymap_stack(&mut self, engine: &mut Engine) -> Vec<ActionNode> {
-        let (win, doc) = engine.get_current_window();
-        vec![
-            doc.keymap().clone(),
-            win.keymap().clone(),
-            self.mode.keymap().clone(), // <- mode layer
-            engine.keymap().clone(),
-        ]
+    fn current_keymap_stack(&mut self, engine: &mut Engine) -> Vec<&ActionNode> {
+        let (_, doc) = engine.get_current_window();
+        
+        let mut chain = Vec::new();
+    
+        // 1. Buffer-specific (highest priority)
+        if let Some(buffer_modes) = self.document_map.get(&doc.id) {
+            if let Some(action_node) = buffer_modes.get(&self.mode) {
+                chain.push(action_node);
+            }
+        }
+        
+        // 2. Doctype-specific (middle priority)
+        if let Some(doctype_modes) = self.doctype_map.get(&doc.doc_type) {
+            if let Some(action_node) = doctype_modes.get(&self.mode) {
+                chain.push(action_node);
+            }
+        }
+        
+        // 3. Global (lowest priority/fallback)
+        if let Some(action_node) = self.global_map.get(&self.mode) {
+            chain.push(action_node);
+        }
+        chain
     }
 
-    fn reset(&mut self) {
+    pub fn mode(&self) -> Mode {self.mode.clone()}
+
+    pub fn change_mode(&mut self, mode: Mode) {
+        self.reset();
+        self.mode = mode;
+    }
+
+    pub fn reset(&mut self) {
         self.active_nodes.clear();
         self.pending = PendingState::new();
     }
@@ -107,10 +139,11 @@ impl InputEngine {
         // Initialize cursors if empty
         if self.active_nodes.is_empty() {
             let keymaps = self.current_keymap_stack(engine);
-            self.active_nodes = keymaps.iter().map(|km| Some(km.clone())).collect();
+            self.active_nodes = keymaps.iter().map(|&km| Some(km.clone())).collect();
         }
 
         let mut matches = Vec::new();
+
 
         for i in 0..self.active_nodes.len() {
             if let Some(node) = self.active_nodes.get_mut(i).unwrap() {
@@ -137,6 +170,8 @@ impl InputEngine {
         }
         None
     }
+
+
 }
 
 impl Default for InputEngine {
@@ -144,52 +179,14 @@ impl Default for InputEngine {
         Self::new()
     }
 }
-#[derive(Deserialize, Clone, Debug)]
-pub enum ModeType {
+#[derive(Deserialize, Clone, Debug,Eq, Hash, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum Mode {
     Input,
     Visualize,
     Normal,
 }
-pub struct Mode {
-    pub mode: ModeType,
-    keymap: Option<ActionNode>,
-}
-impl Mode {
-    pub fn new(mode: ModeType) -> Self {
-        Self {
-            mode: mode.clone(),
-            keymap: None,
-        }
-    }
-}
-impl KeymapProvider for Mode {
-    fn define_keymap(&self) -> ActionNode {
-        let mut keymap: HashMap<Key, ActionNode> = HashMap::new();
-        keymap.insert(
-            Key {
-                code: crate::commands::KeyCode::Char('f'),
-                modifiers: crate::commands::Modifiers::CTRL,
-            },
-            ActionNode {
-                children: HashMap::new(),
-                action: Some(crate::input::Token::Command(CommandRequest {
-                    id: "kill".to_string(),
-                    args: vec![],
-                })),
-            },
-        );
-        ActionNode {
-            children: keymap,
-            action: None,
-        }
-    }
-    fn get_keymap_cache(&self) -> &Option<ActionNode> {
-        &self.keymap
-    }
-    fn set_keymap_cache(&mut self, value: Option<ActionNode>) {
-        self.keymap = value;
-    }
-}
+
 pub struct PendingState {
     pub count: Option<u32>,
     pub operator: Option<String>,
@@ -212,3 +209,5 @@ impl Default for PendingState {
         Self::new()
     }
 }
+
+

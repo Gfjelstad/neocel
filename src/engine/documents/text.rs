@@ -3,12 +3,11 @@ use std::collections::btree_map::Range;
 use serde::Serialize;
 
 use crate::{
-    commands::KeyCode,
     engine::{
         WindowState,
         document::DocumentData,
         documents::{DocumentDataProvider, InsertModeProvider},
-    },
+    }, input::keymaps::{Key, KeyCode},
 };
 
 #[derive(Serialize)]
@@ -27,6 +26,7 @@ impl DocumentDataProvider for TextDocumentData {
         where
             Self: Sized {
         Ok(Self {
+            
             data: content.lines().map(|s| s.to_string()).collect(),
             selected: None,
         })
@@ -41,7 +41,7 @@ impl InsertModeProvider for TextDocumentData {
     fn handle_key(
         &mut self,
         window: &mut WindowState,
-        key: crate::commands::Key,
+        key: Key,
     ) -> Result<(), String> {
         // Make sure it's a TextDocument
         // Shortcut to cursor state

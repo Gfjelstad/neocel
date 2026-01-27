@@ -1,5 +1,5 @@
 use crate::{
-    api::{API, API2, APICaller, ExternalCommandInput},
+    api::API2,
     engine::{Engine, document::DocType},
     input::input_engine::InputEngine,
     render::UI,
@@ -33,10 +33,11 @@ impl CommandDispatcher {
             .insert(id.to_string(), Rc::new(RefCell::new(func)));
     }
 
-    pub fn dispatchV2(
+    pub fn dispatch(
         cmd: &CommandRequest,
         this: Arc<Mutex<Self>>,
         engine: Arc<Mutex<Engine>>,
+        input_engine: Arc<Mutex<InputEngine>>,
     ) -> Result<Option<Value>, String> {
         let doc_type = engine
             .lock()
@@ -58,7 +59,7 @@ impl CommandDispatcher {
 
         drop(guarded_self);
 
-        let mut api = API2::new(engine, this);
+        let mut api = API2::new(engine, this, input_engine);
 
         let func = &mut *selected_command.borrow_mut();
 
@@ -66,11 +67,19 @@ impl CommandDispatcher {
             CommandFunction::Rust(f) => f(&mut api, cmd.args.clone()),
             CommandFunction::Internal(id, params) => Ok(None),
             CommandFunction::Python(py_func) => {
-                let _ = Python::attach(|py| {
+                let res: Result<Option<Option<Value>>, String> = Python::attach(|py| {
                     let py_args = pythonize::pythonize(py, &cmd.args)
                         .map_err(|e| format!("Failed to convert args: {}", e))?;
                     // let pyapi = ctx.to_py_api()?;
                     let module = api.to_module(py).map_err(|e| e.to_string())?;
+
+                    let arg_count: usize = py_func
+                        .getattr(py, "__code__")
+                        .map_err(|e| e.to_string())?
+                        .getattr(py, "co_argcount")
+                        .map_err(|e| e.to_string())?
+                        .extract(py)
+                        .map_err(|e: PyErr| e.to_string())?;
 
                     py.import("sys")
                         .map_err(|e| e.to_string())?
@@ -79,9 +88,16 @@ impl CommandDispatcher {
                         .set_item("api", module.clone())
                         .map_err(|e| e.to_string())?;
                     // Create API context with raw pointer
-                    let result = py_func
-                        .call1(py, (module, py_args))
-                        .map_err(|e| format!("Python call failed: {}", e))?;
+                    // let result = py_func
+                    //     .call1(py, (module, py_args))
+                    //     .map_err(|e| {log::error!("Python call failed: {}", e);return format!("Python call failed: {}", e);})?;
+
+                    let result = match arg_count {
+                        0 => py_func.call0(py),
+                        1 => py_func.call1(py, (module,)),
+                        _ => py_func.call1(py, (module, py_args)),
+                    }
+                    .map_err(|e| {println!("{}",e.to_string());e.to_string()})?;
 
                     if result.is_none(py) {
                         Ok(None)
@@ -198,42 +214,44 @@ impl Default for CommandDispatcher {
 }
 
 pub type CommandId = String;
+// #[pyclass]
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct CommandRequest {
     pub id: CommandId,
+    #[serde(default)]
     pub args: Vec<Value>,
 }
 
-pub struct CommandContext<'a> {
-    fp: APICaller<'a>,
-}
-impl<'a> CommandContext<'a> {
-    pub fn call(
-        &mut self,
-        id: String,
-        params: Option<ExternalCommandInput>,
-    ) -> Result<Option<Value>, String> {
-        (self.fp)(id, params)
-    }
-    pub fn to_py_api(&mut self) -> Result<Py<ApiContext>, String> {
-        Python::attach(|py| {
-            let fp_ptr = self.fp
-                as *mut dyn FnMut(
-                    String,
-                    Option<ExternalCommandInput>,
-                ) -> Result<Option<Value>, String>;
-            let static_ptr: *mut (
-                dyn FnMut(String, Option<ExternalCommandInput>) -> Result<Option<Value>, String>
-                    + 'static
-            ) = unsafe { std::mem::transmute(fp_ptr) };
+// pub struct CommandContext<'a> {
+//     fp: APICaller<'a>,
+// }
+// impl<'a> CommandContext<'a> {
+//     pub fn call(
+//         &mut self,
+//         id: String,
+//         params: Option<ExternalCommandInput>,
+//     ) -> Result<Option<Value>, String> {
+//         (self.fp)(id, params)
+//     }
+//     pub fn to_py_api(&mut self) -> Result<Py<ApiContext>, String> {
+//         Python::attach(|py| {
+//             let fp_ptr = self.fp
+//                 as *mut dyn FnMut(
+//                     String,
+//                     Option<ExternalCommandInput>,
+//                 ) -> Result<Option<Value>, String>;
+//             let static_ptr: *mut (
+//                 dyn FnMut(String, Option<ExternalCommandInput>) -> Result<Option<Value>, String>
+//                     + 'static
+//             ) = unsafe { std::mem::transmute(fp_ptr) };
 
-            Py::new(py, ApiContext { fp_ptr: static_ptr }).map_err(|e| e.to_string())
-        })
-    }
-}
+//             Py::new(py, ApiContext { fp_ptr: static_ptr }).map_err(|e| e.to_string())
+//         })
+//     }
+// }
 
 type CommandResult = Result<Option<Value>, String>;
-type CommandFn = dyn FnMut(&mut CommandContext, Vec<Value>) -> CommandResult;
+// type CommandFn = dyn FnMut(&mut CommandContext, Vec<Value>) -> CommandResult;
 type CommandFn2 = dyn FnMut(&mut API2, Vec<Value>) -> CommandResult;
 
 pub struct CommandDispatcher {
@@ -258,30 +276,30 @@ impl<'a, 'py> FromPyObject<'a, 'py> for CommandFunction {
     }
 }
 
-#[pyclass(unsendable)]
-pub struct ApiContext {
-    fp_ptr: *mut (
-        dyn FnMut(String, Option<ExternalCommandInput>) -> Result<Option<Value>, String> + 'static
-    ),
-}
+// #[pyclass(unsendable)]
+// pub struct ApiContext {
+//     fp_ptr: *mut (
+//         dyn FnMut(String, Option<ExternalCommandInput>) -> Result<Option<Value>, String> + 'static
+//     ),
+// }
 
-#[pymethods]
-impl ApiContext {
-    fn call(&self, id: String, params: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
-        Python::attach(|py| {
-            let input = params.map(|p| ExternalCommandInput::Python(p));
+// #[pymethods]
+// impl ApiContext {
+//     fn call(&self, id: String, params: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+//         Python::attach(|py| {
+//             let input = params.map(|p| ExternalCommandInput::Python(p));
 
-            // UNSAFE: Call through the raw pointer
-            let result = unsafe { (*self.fp_ptr)(id, input) }
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e))?;
+//             // UNSAFE: Call through the raw pointer
+//             let result = unsafe { (*self.fp_ptr)(id, input) }
+//                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e))?;
 
-            let res = match result {
-                Some(value) => pythonize::pythonize(py, &value)
-                    .map(|v| v.into_pyobject(py).unwrap().unbind())
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())),
-                None => Ok(py.None()),
-            };
-            res
-        })
-    }
-}
+//             let res = match result {
+//                 Some(value) => pythonize::pythonize(py, &value)
+//                     .map(|v| v.into_pyobject(py).unwrap().unbind())
+//                     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string())),
+//                 None => Ok(py.None()),
+//             };
+//             res
+//         })
+//     }
+// }

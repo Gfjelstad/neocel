@@ -1,153 +1,116 @@
 pub mod command_api;
-pub mod config;
-pub mod document_api;
 pub mod engine_api;
-pub mod text_document_api;
-pub mod utils;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex, RwLock},
-};
+pub mod documents;
+pub mod config_api;
+pub mod keybind_api;
+use std::
+    sync::{Arc, Mutex}
+;
 
 use pyo3::{
-    Bound, Py, PyAny, PyErr, PyResult, Python, pyclass, pymethods, pymodule,
-    types::{PyFunction, PyModule, PyModuleMethods},
+    Bound, BoundObject, FromPyObject, IntoPyObject, Py, PyAny, PyClass, PyClassInitializer, PyErr, PyErrArguments, PyResult, Python, exceptions::{PyRuntimeError, PyTypeError}, pyclass, types::{PyModule, PyModuleMethods}
 };
+use pythonize::depythonize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    api::engine_api::EngineAPI2,
-    commands::command_dispatcher::{CommandDispatcher, CommandFunction},
+    api::{command_api::CommandAPI, config_api::ConfigAPI, documents::{DocumentAPI, text_document_api::TextDocumentAPI}, engine_api::EngineAPI2, keybind_api::KeybindApi},
+    commands::command_dispatcher::CommandDispatcher,
     engine::Engine,
     input::input_engine::InputEngine,
-    render::UI,
 };
-#[derive(Debug)]
-pub enum ExternalCommandInput {
-    Python(Py<PyAny>),
-    JSON(Value),
-}
 
-pub struct APIMethodParams<'a> {
-    engine: &'a mut Engine,
-    input_engine: &'a mut InputEngine,
-    ui: &'a mut UI,
-    command_dispatch: &'a mut CommandDispatcher,
-    params: Option<ExternalCommandInput>,
-}
-pub type APIMethodResult = Result<Option<Value>, String>;
-pub type APIMethod = for<'a, 'b> fn(&'b mut APIMethodParams<'a>) -> APIMethodResult;
-pub struct API {
-    commands: HashMap<String, APIMethod>,
-}
-
-pub type APICaller<'a> =
-    &'a mut dyn FnMut(String, Option<ExternalCommandInput>) -> Result<Option<Value>, String>;
-
-impl API {
-    pub fn new() -> Self {
-        let mut s = Self {
-            commands: HashMap::new(),
-        };
-        engine_api::EngineAPI::register_methods(&mut s);
-        command_api::CommandAPI::register_methods(&mut s);
-        document_api::DocumentAPI::register_methods(&mut s);
-        text_document_api::TextDocumentAPI::register_methods(&mut s);
-        s
-    }
-    pub fn register_api(&mut self, methods: HashMap<&str, APIMethod>) {
-        let t: HashMap<String, APIMethod> = methods
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect();
-        self.commands.extend(t);
-    }
-
-    pub fn run_command<F>(
-        &mut self,
-        engine: &mut Engine,
-        input_engine: &mut InputEngine,
-        ui: &mut UI,
-        command_dispatch: &mut CommandDispatcher,
-        mut callback: F,
-    ) -> Result<Option<Value>, String>
-    where
-        F: FnMut(APICaller) -> Result<Option<Value>, String>,
-    {
-        let mut callable = |command_name: String,
-                            params: Option<ExternalCommandInput>|
-         -> Result<Option<Value>, String> {
-            if let Some(func) = self.commands.get(&command_name) {
-                let mut tuple_args = APIMethodParams {
-                    engine,
-                    input_engine,
-                    ui,
-                    command_dispatch,
-                    params,
-                };
-                func(&mut tuple_args)
-            } else {
-                println!("could not find command");
-                Ok(None)
-            }
-        };
-
-        // invoke the user-provided callback, passing in the callable
-        callback(&mut callable)
-    }
-}
-
-impl Default for API {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-pub trait APIRegister {
-    fn register_methods(api: &mut API);
-}
-
-// pub fn initialize_api_module(py: Python<'_>, engine: Arc<Engine>) -> PyResult<Bound<'_, PyModule>> {
-//     let module = PyModule::new(py, "api")?;
-
-//     // Register classes
-//     module.add_class::<EngineAPI2>()?;
-
-//     // Create instances with your engine
-//     let engine_api = Py::new(py, EngineAPI2::new(engine))?;
-//     // let commands_api = Py::new(py, CommandsAPI::new(engine.clone()))?;
-//     // let inputs_api = Py::new(py, InputsAPI::new(engine.clone()))?;
-
-//     // Add instances to module
-//     module.add("engine", engine_api)?;
-//     // module.add("commands", commands_api)?;
-//     // module.add("inputs", inputs_api)?;
-
-//     Ok(module)
-// }
 
 pub struct API2 {
     pub engine_api: Arc<EngineAPI2>,
+    pub command_api: Arc<CommandAPI>,
+    pub config_api: Arc<ConfigAPI>,
+    pub text_document_api: Arc<TextDocumentAPI>,
+    pub document_api: Arc<DocumentAPI>,
+    pub keybind_api: Arc<KeybindApi>
+
 }
 
 impl API2 {
     pub fn new(
         engine: Arc<Mutex<Engine>>,
         command_dispatch: Arc<Mutex<CommandDispatcher>>,
+        input_engine: Arc<Mutex<InputEngine>>
     ) -> Self {
         Self {
-            engine_api: Arc::new(EngineAPI2::new(engine)),
+            engine_api: Arc::new(EngineAPI2::new(engine.clone())),
+            command_api: Arc::new(CommandAPI::new(command_dispatch.clone(), input_engine.clone(), engine.clone())),
+            config_api: Arc::new(ConfigAPI::new(engine.clone())),
+            text_document_api: Arc::new(TextDocumentAPI::new(engine.clone())),
+            document_api: Arc::new(DocumentAPI::new(input_engine.clone(), engine.clone())),
+            keybind_api: Arc::new(KeybindApi::new(engine.clone(), command_dispatch.clone(), input_engine.clone()))
         }
     }
 
+ 
+    fn bind<T>( py: Python, module: &Bound<'_, PyModule>, name: &str, instance: &Arc<T>) -> PyResult<()>
+    where
+        T: PyClass + Clone + Into<PyClassInitializer<T>>,
+    {
+        module.add_class::<T>()?;
+        let py_instance = Py::new(py, (**instance).clone())?;
+        module.add(name, py_instance)?;
+        Ok(())
+    }
+
     pub fn to_module<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyModule>> {
-        let module = PyModule::new(py, "api")?;
 
-        module.add_class::<EngineAPI2>()?;
-        let engine_api = Py::new(py, (*self.engine_api).clone())?;
-
-        module.add("engine", engine_api)?;
+        let module: Bound<'_, PyModule> = PyModule::new(py, "api")?;
+   
+        API2::bind(py, &module, "engine", &self.engine_api)?;
+        API2::bind(py, &module, "commands", &self.command_api)?;
+        API2::bind(py, &module, "config", &self.config_api)?;
+        API2::bind(py, &module, "text", &self.text_document_api)?;
+        API2::bind(py, &module, "document", &self.document_api)?;
+        API2::bind(py, &module, "keybinds", &self.keybind_api)?;
 
         Ok(module)
     }
 }
+
+
+
+// #[pyclass]
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PyValue(pub Value);
+
+impl PyValue {
+    pub fn parse_to<T: for<'de> Deserialize<'de>>(&self) -> Result<T, PyErr> {
+        serde_json::from_value::<T>(self.0.clone())
+            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+    }
+
+}
+
+
+impl<'a, 'py> FromPyObject<'a, 'py> for PyValue {
+    type Error = PyErr;
+
+    fn extract(obj: pyo3::Borrowed<'a, 'py, pyo3::PyAny>) -> Result<Self, Self::Error> {
+        depythonize(&*obj)
+            .map(PyValue)
+            .map_err(|e: pythonize::PythonizeError| PyTypeError::new_err(e.to_string()))
+    }
+}
+impl<'py> IntoPyObject<'py> for PyValue {
+    type Target = pyo3::PyAny;
+    type Output = Bound<'py, pyo3::PyAny>;
+    type Error = PyErr;
+
+    fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
+        pythonize::pythonize(py, &self).map_err(|e| PyTypeError::new_err(e.to_string()))
+    }
+}
+// impl<'a, 'py> FromPyObject<'a, 'py> for PyValue {
+//     type Error = PyErr;
+//     fn extract(obj: pyo3::Borrowed<'a, 'py, pyo3::PyAny>) -> Result<Self, Self::Error> {
+//         let params: Value = depythonize(&obj).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+//         Ok(PyValue(params))
+//     }
+// }

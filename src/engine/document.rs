@@ -1,13 +1,14 @@
 use crate::{
-    commands::{Key, Modifiers, command_dispatcher::CommandRequest},
+    commands::{command_dispatcher::CommandRequest},
     engine::{
         Edit,
         documents::{
             InsertModeProvider, spreadsheet::SpreadSheetDocumentData, text::TextDocumentData,
         },
     },
-    input::keymaps::{ActionNode, KeymapProvider},
+    input::keymaps::{ActionNode},
 };
+use pyo3::pyclass;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -17,8 +18,9 @@ use uuid::Uuid;
 
 pub type DocId = String;
 
-#[derive(Eq, Clone, Hash, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Eq, Clone, Hash, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[pyclass]
 pub enum DocType {
     SpreadSheet,
     Info,
@@ -32,8 +34,6 @@ pub struct Document {
     pub data: DocumentData,
     #[serde(skip)]
     pub undo_stack: Vec<Edit>,
-    #[serde(skip)]
-    pub keymap: Option<ActionNode>,
 }
 impl Document {
     pub fn new(data: DocumentData, path: Option<PathBuf>) -> (DocId, Self) {
@@ -50,7 +50,6 @@ impl Document {
                 id,
                 doc_type: doc_type.clone(),
                 path,
-                keymap: None,
                 data,
                 undo_stack: vec![],
             },
@@ -71,43 +70,6 @@ impl DocumentData {
             Self::SpreadSheet(t) => Some(t),
             Self::Text(t) => Some(t),
             _ => None,
-        }
-    }
-}
-impl KeymapProvider for Document {
-    fn get_keymap_cache(&self) -> &Option<crate::input::keymaps::ActionNode> {
-        &self.keymap
-    }
-    fn set_keymap_cache(&mut self, value: Option<crate::input::keymaps::ActionNode>) {
-        self.keymap = value;
-    }
-    fn define_keymap(&self) -> crate::input::keymaps::ActionNode {
-        let mut keymap: HashMap<Key, ActionNode> = HashMap::new();
-        keymap.insert(
-            Key {
-                code: crate::commands::KeyCode::Char(' '),
-                modifiers: Modifiers::empty(),
-            },
-            ActionNode {
-                children: HashMap::from([(
-                    Key {
-                        code: crate::commands::KeyCode::Down,
-                        modifiers: Modifiers::empty(),
-                    },
-                    ActionNode {
-                        children: HashMap::new(),
-                        action: Some(crate::input::Token::Command(CommandRequest {
-                            id: "window.split_scratch_down".to_string(),
-                            args: vec![],
-                        })),
-                    },
-                )]),
-                action: None,
-            },
-        );
-        ActionNode {
-            children: keymap,
-            action: None,
         }
     }
 }
